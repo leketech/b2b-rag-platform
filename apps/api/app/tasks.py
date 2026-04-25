@@ -1,7 +1,6 @@
 """Async Celery tasks for notifications and scheduled checks."""
-from celery import shared_task
-from datetime import datetime, timedelta, timezone
 import structlog
+from celery import shared_task
 
 logger = structlog.get_logger()
 
@@ -12,6 +11,7 @@ def send_email_notification(self, recipient: str, subject: str, body: str, relat
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
+
         from app.core.config import settings
 
         message = Mail(
@@ -25,7 +25,7 @@ def send_email_notification(self, recipient: str, subject: str, body: str, relat
         logger.info("notification.email.sent", recipient=recipient, subject=subject)
     except Exception as exc:
         logger.error("notification.email.failed", error=str(exc))
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -33,6 +33,7 @@ def send_sms_notification(self, to_number: str, body: str):
     """Send an SMS via Twilio."""
     try:
         from twilio.rest import Client
+
         from app.core.config import settings
 
         client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
@@ -40,7 +41,7 @@ def send_sms_notification(self, to_number: str, body: str):
         logger.info("notification.sms.sent", to=to_number)
     except Exception as exc:
         logger.error("notification.sms.failed", error=str(exc))
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -48,6 +49,7 @@ def send_slack_notification(self, channel: str, message: str):
     """Send a Slack message via bot token."""
     try:
         from slack_sdk import WebClient
+
         from app.core.config import settings
 
         client = WebClient(token=settings.SLACK_BOT_TOKEN)
@@ -55,7 +57,7 @@ def send_slack_notification(self, channel: str, message: str):
         logger.info("notification.slack.sent", channel=channel)
     except Exception as exc:
         logger.error("notification.slack.failed", error=str(exc))
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 @shared_task

@@ -21,7 +21,8 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD || 'test-password-ci' }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_DB: b2b_rag_test
         options: >-
           --health-cmd pg_isready
@@ -64,7 +65,7 @@ jobs:
       - name: Run tests
         working-directory: apps/api
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD || 'test-password-ci' }}@localhost:5432/b2b_rag_test
+          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@localhost:5432/b2b_rag_test
           REDIS_URL: redis://localhost:6379/0
           CELERY_BROKER_URL: redis://localhost:6379/1
           CELERY_RESULT_BACKEND: redis://localhost:6379/2

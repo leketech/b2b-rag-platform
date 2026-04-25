@@ -1,16 +1,16 @@
 """Core RAG retrieval service used by all feature modules."""
 from typing import Any
+
 import structlog
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_anthropic import ChatAnthropic
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
-from sqlalchemy import select, text
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.models import DocumentChunk
 
 logger = structlog.get_logger()
 
@@ -45,7 +45,7 @@ class RAGService:
         doc_type: str | None = None,
         organization_id: str | None = None,
         top_k: int = 5,
-    ) -> list[DocumentChunk]:
+    ) -> list[Any]:
         """Semantic search over document_chunks using pgvector cosine similarity."""
         query_embedding = await self.embed_query(query)
 
@@ -69,7 +69,7 @@ class RAGService:
         rows = result.fetchall()
 
         logger.info("rag.retrieval", query=query[:80], doc_type=doc_type, chunks_found=len(rows))
-        return rows
+        return list(rows)
 
     async def generate(
         self,

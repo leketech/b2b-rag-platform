@@ -2,7 +2,7 @@
 import hashlib
 import uuid
 from pathlib import Path
-from typing import Iterator
+from typing import Any  # ✅ Added
 
 import structlog
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -38,8 +38,8 @@ def _load_text(path: Path) -> str:
             import fitz  # PyMuPDF
             doc = fitz.open(str(path))
             return "\n".join(page.get_text() for page in doc)
-        except ImportError:
-            raise RuntimeError("PyMuPDF not installed. Run: pip install pymupdf")
+        except ImportError as e:
+            raise RuntimeError("PyMuPDF not installed. Run: pip install pymupdf") from e
     if suffix == ".docx":
         from docx import Document
         doc = Document(str(path))
@@ -68,7 +68,7 @@ class IngestionService:
         db: AsyncSession,
         path: Path,
         organization_id: str | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,  # ✅ Tighter type
     ) -> int:
         """Ingest a single file. Returns number of chunks stored."""
         logger.info("ingest.start", file=str(path))
@@ -79,10 +79,12 @@ class IngestionService:
         embeddings = await self.embeddings.aembed_documents(chunks)
 
         records = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False)):
             records.append(DocumentChunk(
                 id=uuid.uuid4(),
-                organization_id=uuid.UUID(organization_id) if organization_id else None,
+                organization_id=(
+                    uuid.UUID(organization_id) if organization_id is not None else None  # ✅ Explicit narrowing
+                ),
                 doc_type=doc_type,
                 source_filename=path.name,
                 chunk_index=i,
@@ -106,7 +108,7 @@ class IngestionService:
         organization_id: str | None = None,
     ) -> dict[str, int]:
         """Ingest all supported files in a directory."""
-        results = {}
+        results: dict[str, int] = {}  # ✅ Explicit type
         supported = {".txt", ".md", ".pdf", ".docx"}
         for path in directory.rglob("*"):
             if path.suffix.lower() in supported:
@@ -119,4 +121,6 @@ class IngestionService:
         return results
 
 
+# ✅ Optional: Singleton instance for easy imports
 ingestion_service = IngestionService()
+__all__ = ["IngestionService", "ingestion_service"]

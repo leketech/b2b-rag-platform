@@ -1,8 +1,9 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
+import pytest
+from app.db.session import get_db
 from app.main import app
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture
@@ -14,14 +15,20 @@ async def client():
 
 
 async def test_health_ok(client):
-    with patch("app.api.v1.endpoints.health.get_db") as mock_db:
-        mock_session = AsyncMock()
-        mock_db.return_value.__aiter__.return_value = [mock_session]
-        mock_session.execute = AsyncMock()
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock()
 
+    async def override_get_db():
+        yield mock_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
         response = await client.get("/api/v1/health")
-        # Health check should reach the endpoint
-        assert response.status_code in (200, 500)  # 500 if no real DB in CI
+    finally:
+        app.dependency_overrides.clear()
+
+    # Health check should reach the endpoint
+    assert response.status_code in (200, 500)  # 500 if no real DB in CI
 
 
 async def test_ingest_unsupported_type(client):

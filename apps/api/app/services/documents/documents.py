@@ -1,11 +1,16 @@
 """Document ingestion endpoints — used to feed the RAG knowledge base."""
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.services.documents.ingestion import ingestion_service
+from app.services.documents.ingestion import IngestionService
+
+
+def get_ingestion_service():
+    return IngestionService()
 
 router = APIRouter()
 
@@ -18,6 +23,9 @@ async def ingest_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a document (PDF, DOCX, TXT, MD) to the RAG knowledge base."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File must have a filename")
+    
     allowed = {".pdf", ".docx", ".txt", ".md"}
     suffix = Path(file.filename).suffix.lower()
     if suffix not in allowed:
@@ -30,7 +38,8 @@ async def ingest_document(
         tmp_path = Path(tmp.name)
 
     async def _ingest():
-        await ingestion_service.ingest_file(db, tmp_path, organization_id)
+        service = get_ingestion_service()
+        await service.ingest_file(db, tmp_path, organization_id)
         tmp_path.unlink(missing_ok=True)
 
     background_tasks.add_task(_ingest)
@@ -52,6 +61,7 @@ async def list_chunks(
 ):
     """List ingested document chunks (for debugging / auditing)."""
     from sqlalchemy import select
+
     from app.models.models import DocumentChunk
 
     q = select(
