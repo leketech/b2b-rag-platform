@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL with pgvector ────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: b2b_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-b2b_rag}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ───────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: b2b_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI ─────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: b2b_api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Celery Worker ───────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: b2b_celery
+    env_file: .env
+    volumes:
+      - ./apps/api:/app
+    depends_on:
+      - redis
+      - postgres
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+
+  # ─── Celery Beat (scheduler) ─────────────────────────────────
+  celery_beat:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: b2b_celery_beat
+    env_file: .env
+    volumes:
+      - ./apps/api:/app
+    depends_on:
+      - redis
+    command: celery -A app.core.celery_app beat --loglevel=info
+
+  # ─── Flower (Celery monitoring) ──────────────────────────────
+  flower:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: b2b_flower
+    env_file: .env
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    command: celery -A app.core.celery_app flower --port=5555
+
+  # ─── Next.js Frontend ────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: b2b_web
+    env_file: .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:
