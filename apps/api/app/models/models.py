@@ -12,6 +12,7 @@ from app.db.session import Base
 
 # ─── Enums ────────────────────────────────────────────────────
 
+
 class DocumentType(str, Enum):
     CONTRACT = "contract"
     INVOICE = "invoice"
@@ -44,6 +45,7 @@ class MeetingStatus(str, Enum):
 
 # ─── Models ───────────────────────────────────────────────────
 
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -60,11 +62,16 @@ class Organization(Base):
 
 class DocumentChunk(Base):
     """Vector store — embedded document chunks for RAG retrieval."""
+
     __tablename__ = "document_chunks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
-    doc_type: Mapped[str] = mapped_column(String(50), nullable=False)  # contract/invoice/policy/template
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+    )
+    doc_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # contract/invoice/policy/template
     source_filename: Mapped[str] = mapped_column(String(500), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, default=0)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -77,18 +84,22 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id")
+    )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     contract_type: Mapped[str] = mapped_column(String(50), default="NDA")  # NDA/SoW/MSA
     status: Mapped[str] = mapped_column(String(50), default=ContractStatus.DRAFT)
-    parties: Mapped[dict] = mapped_column(JSON, default={})   # {client: {}, vendor: {}}
+    parties: Mapped[dict] = mapped_column(JSON, default={})  # {client: {}, vendor: {}}
     content: Mapped[str] = mapped_column(Text, nullable=True)  # Generated contract text
     s3_key: Mapped[str] = mapped_column(String(1000), nullable=True)  # PDF location in S3
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     signed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     generation_metadata: Mapped[dict] = mapped_column(JSON, default={})  # RAG sources, tokens used
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 
     organization: Mapped["Organization"] = relationship(back_populates="contracts")
 
@@ -97,7 +108,9 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id")
+    )
     invoice_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=InvoiceStatus.DRAFT)
     client_info: Mapped[dict] = mapped_column(JSON, default={})
@@ -114,7 +127,9 @@ class Invoice(Base):
     paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 
     organization: Mapped["Organization"] = relationship(back_populates="invoices")
 
@@ -123,10 +138,12 @@ class Meeting(Base):
     __tablename__ = "meetings"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id")
+    )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=MeetingStatus.SCHEDULED)
-    attendees: Mapped[list] = mapped_column(JSON, default=[])   # [{name, email}]
+    attendees: Mapped[list] = mapped_column(JSON, default=[])  # [{name, email}]
     scheduled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
     location: Mapped[str] = mapped_column(String(500), nullable=True)  # URL or room
@@ -143,7 +160,9 @@ class NotificationLog(Base):
     __tablename__ = "notification_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+    )
     channel: Mapped[str] = mapped_column(String(50))  # email/sms/slack
     recipient: Mapped[str] = mapped_column(String(500))
     subject: Mapped[str] = mapped_column(String(500), nullable=True)

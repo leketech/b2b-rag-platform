@@ -1,4 +1,5 @@
 """Reminder & notification endpoints — full implementation in Phase 4."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,12 +11,12 @@ router = APIRouter()
 
 class ReminderRequest(BaseModel):
     organization_id: str
-    related_type: str       # contract | invoice | meeting
+    related_type: str  # contract | invoice | meeting
     related_id: str
-    channel: str            # email | sms | slack
-    recipient: str          # email address or phone number
-    message: str = ""       # override auto-generated message
-    send_at: str = ""       # ISO8601, empty = send immediately
+    channel: str  # email | sms | slack
+    recipient: str  # email address or phone number
+    message: str = ""  # override auto-generated message
+    send_at: str = ""  # ISO8601, empty = send immediately
 
 
 @router.post("/send")

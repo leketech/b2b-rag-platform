@@ -1,4 +1,5 @@
 """Invoice generation endpoints — full implementation in Phase 2."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +17,11 @@ class LineItem(BaseModel):
 
 class InvoiceRequest(BaseModel):
     organization_id: str
-    client_info: dict       # {name, email, address, company}
+    client_info: dict  # {name, email, address, company}
     line_items: list[LineItem]
     tax_rate: float = 0.0
     currency: str = "USD"
-    due_days: int = 30      # days from today
+    due_days: int = 30  # days from today
     notes: str = ""
     create_stripe_link: bool = False
 

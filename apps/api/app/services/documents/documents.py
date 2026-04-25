@@ -1,4 +1,5 @@
 """Document ingestion endpoints — used to feed the RAG knowledge base."""
+
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.services.documents.ingestion import IngestionService
 
 def get_ingestion_service():
     return IngestionService()
+
 
 router = APIRouter()
 
@@ -25,7 +27,7 @@ async def ingest_document(
     """Upload a document (PDF, DOCX, TXT, MD) to the RAG knowledge base."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="File must have a filename")
-    
+
     allowed = {".pdf", ".docx", ".txt", ".md"}
     suffix = Path(file.filename).suffix.lower()
     if suffix not in allowed:

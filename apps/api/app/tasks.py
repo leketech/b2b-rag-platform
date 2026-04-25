@@ -1,4 +1,5 @@
 """Async Celery tasks for notifications and scheduled checks."""
+
 import structlog
 from celery import shared_task
 
@@ -6,7 +7,9 @@ logger = structlog.get_logger()
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_email_notification(self, recipient: str, subject: str, body: str, related_type: str = "", related_id: str = ""):
+def send_email_notification(
+    self, recipient: str, subject: str, body: str, related_type: str = "", related_id: str = ""
+):
     """Send an email via SendGrid."""
     try:
         from sendgrid import SendGridAPIClient

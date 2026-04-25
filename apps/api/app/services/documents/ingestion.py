@@ -1,4 +1,5 @@
 """Ingestion pipeline: load → chunk → embed → store in pgvector."""
+
 import hashlib
 import uuid
 from pathlib import Path
@@ -36,12 +37,14 @@ def _load_text(path: Path) -> str:
     if suffix == ".pdf":
         try:
             import fitz  # PyMuPDF
+
             doc = fitz.open(str(path))
             return "\n".join(page.get_text() for page in doc)
         except ImportError as e:
             raise RuntimeError("PyMuPDF not installed. Run: pip install pymupdf") from e
     if suffix == ".docx":
         from docx import Document
+
         doc = Document(str(path))
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     raise ValueError(f"Unsupported file type: {suffix}")
@@ -80,21 +83,25 @@ class IngestionService:
 
         records = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False)):
-            records.append(DocumentChunk(
-                id=uuid.uuid4(),
-                organization_id=(
-                    uuid.UUID(organization_id) if organization_id is not None else None  # ✅ Explicit narrowing
-                ),
-                doc_type=doc_type,
-                source_filename=path.name,
-                chunk_index=i,
-                content=chunk,
-                embedding=embedding,
-                metadata_={
-                    "file_hash": hashlib.md5(text.encode()).hexdigest(),
-                    **(metadata or {}),
-                },
-            ))
+            records.append(
+                DocumentChunk(
+                    id=uuid.uuid4(),
+                    organization_id=(
+                        uuid.UUID(organization_id)
+                        if organization_id is not None
+                        else None  # ✅ Explicit narrowing
+                    ),
+                    doc_type=doc_type,
+                    source_filename=path.name,
+                    chunk_index=i,
+                    content=chunk,
+                    embedding=embedding,
+                    metadata_={
+                        "file_hash": hashlib.md5(text.encode()).hexdigest(),
+                        **(metadata or {}),
+                    },
+                )
+            )
 
         db.add_all(records)
         await db.commit()

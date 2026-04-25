@@ -1,4 +1,5 @@
 """Core RAG retrieval service used by all feature modules."""
+
 from typing import Any
 
 import structlog

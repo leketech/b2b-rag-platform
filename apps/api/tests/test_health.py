@@ -8,9 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 @pytest.fixture
 async def client():
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
 
 
@@ -33,6 +31,7 @@ async def test_health_ok(client):
 
 async def test_ingest_unsupported_type(client):
     import io
+
     response = await client.post(
         "/api/v1/documents/ingest",
         files={"file": ("test.csv", io.BytesIO(b"col1,col2"), "text/csv")},

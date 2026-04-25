@@ -1,4 +1,5 @@
 """Meeting scheduling endpoints — full implementation in Phase 3."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,17 +12,17 @@ router = APIRouter()
 class ScheduleRequest(BaseModel):
     organization_id: str
     title: str
-    attendees: list[dict]       # [{name, email}]
+    attendees: list[dict]  # [{name, email}]
     natural_language: str = ""  # "schedule a 30-min call next Tuesday afternoon"
     preferred_datetime: str = ""  # ISO8601 fallback if no NL
     duration_minutes: int = 30
-    location: str = ""          # Zoom link, room name, etc.
+    location: str = ""  # Zoom link, room name, etc.
 
 
 class AvailabilityRequest(BaseModel):
     organizer_email: str
     duration_minutes: int = 30
-    from_date: str              # ISO8601
+    from_date: str  # ISO8601
     to_date: str
 
 

@@ -1,4 +1,5 @@
 """Contract generation endpoints — full implementation in Phase 2."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +12,8 @@ router = APIRouter()
 class ContractRequest(BaseModel):
     organization_id: str
     contract_type: str  # NDA | MSA | SoW
-    parties: dict       # {client: {name, email}, vendor: {name, email}}
-    key_terms: dict     # {duration, payment_terms, jurisdiction, ...}
+    parties: dict  # {client: {name, email}, vendor: {name, email}}
+    key_terms: dict  # {duration, payment_terms, jurisdiction, ...}
     additional_context: str = ""
 
 

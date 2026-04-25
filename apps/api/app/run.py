@@ -7,6 +7,7 @@ Usage:
   python scripts/ingest/run.py --source ./data/templates --org-id <uuid>
   python scripts/ingest/run.py --file ./contracts/nda_template.pdf
 """
+
 import argparse
 import asyncio
 import sys
