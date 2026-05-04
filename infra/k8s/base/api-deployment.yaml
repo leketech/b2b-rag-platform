@@ -1,6 +1,7 @@
+# infra/k8s/base/api-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
-meta
+metadata:
   name: api
   labels:
     app: api
@@ -11,7 +12,7 @@ spec:
     matchLabels:
       app: api
   template:
-    meta
+    metadata:
       labels:
         app: api
         project: b2b-rag
@@ -62,7 +63,7 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-meta
+metadata:
   name: api
   labels:
     app: api
@@ -77,7 +78,7 @@ spec:
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
-meta
+metadata:
   name: api-hpa
 spec:
   scaleTargetRef:
