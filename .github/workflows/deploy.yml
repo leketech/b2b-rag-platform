@@ -1,0 +1,66 @@
+# .github/workflows/deploy.yml
+name: Deploy FastAPI to EKS (OIDC)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: b2b-rag-api
+  KUSTOMIZE_PATH: infra/k8s/overlays/staging
+  CLUSTER_NAME: b2b-rag-cluster
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 🔐 OIDC Auth - MINIMAL, HARDCODED, NO VARIABLES
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+          aws-region: us-east-1
+          audience: sts.amazonaws.com
+
+      - name: Verify Auth
+        run: aws sts get-caller-identity
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: private
+
+      - name: Build & Push
+        run: |
+          IMG="${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}"
+          docker build -t $IMG -f apps/api/Dockerfile apps/api/
+          docker push $IMG
+          echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+
+      - name: Install Kustomize
+        run: |
+          curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Deploy
+        working-directory: ${{ env.KUSTOMIZE_PATH }}
+        run: |
+          kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
+          kubectl apply -k .
+          kubectl rollout status deployment/api --timeout=300s

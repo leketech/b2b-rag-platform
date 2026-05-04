@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  labels: { app: celery-beat }
+spec:
+  replicas: 1  # ⚠️ Only ONE beat instance allowed to avoid duplicate tasks
+  selector:
+    matchLabels: { app: celery-beat }
+  template:
+    metadata:
+      labels: { app: celery-beat }
+    spec:
+      serviceAccountName: b2b-rag-api
+      containers:
+        - name: beat
+          image: b2b-rag-api:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
+          envFrom:
+            - secretRef:
+                name: b2b-rag-secrets
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "250m", memory: "512Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
