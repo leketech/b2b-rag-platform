@@ -103,3 +103,4 @@ Thumbs.db
 # =============================================================================
 .github/workflows/*.local.yml
 !.github/workflows/*.local.yml.example
+trust-policy.json
