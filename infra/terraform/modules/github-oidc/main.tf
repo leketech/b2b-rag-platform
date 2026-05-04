@@ -6,8 +6,12 @@ data "aws_region" "current" {}
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
+  
+  # ✅ BOTH current GitHub thumbprints (valid through 2027)
+  # Source: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
   thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1" # GitHub's thumbprint (valid until 2027)
+    "6938fd4d98bab03faadb97b34396831e3780aea1",  # Primary
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"   # Backup (critical for resilience)
   ]
 
   tags = {
