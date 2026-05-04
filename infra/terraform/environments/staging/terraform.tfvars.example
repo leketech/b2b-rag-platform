@@ -1,0 +1,17 @@
+region         = "us-east-1"
+environment    = "staging"
+project_name   = "b2b-rag"
+vpc_cidr       = "10.0.0.0/16"
+
+public_subnet_azs  = ["us-east-1a", "us-east-1b"]
+private_subnet_azs = ["us-east-1c", "us-east-1d"]
+
+# 🔐 Set real value via CI/CD secret or AWS Secrets Manager
+db_password = "CHANGE_ME_IN_PRODUCTION"
+
+# EKS node config (Free Tier optimized)
+node_instance_types = ["t3.micro"]
+desired_size        = 1
+min_size            = 1
+max_size            = 2
+capacity_type       = "ON_DEMAND"

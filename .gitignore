@@ -1,0 +1,105 @@
+# =============================================================================
+# TERRAFORM - NEVER COMMIT STATE OR SENSITIVE VARS
+# =============================================================================
+*.tfstate
+*.tfstate.backup
+.terraform/
+*.tfvars
+!*.tfvars.example
+*.tfplan
+.terraform.lock.hcl
+
+# =============================================================================
+# KUBERNETES - NEVER COMMIT REAL SECRETS OR KUBECONFIGS
+# =============================================================================
+*-kubeconfig
+*.kubeconfig
+*.secret.yaml
+!*.secret.yaml.example
+*-secret.yaml
+!*-secret.yaml.example
+secrets.yaml
+!secrets.yaml.example
+
+# =============================================================================
+# DOCKER / CONTAINERS
+# =============================================================================
+*.log
+.DS_Store
+docker-compose.override.yml
+!docker-compose.override.yml.example
+
+# =============================================================================
+# PYTHON / FASTAPI
+# =============================================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# =============================================================================
+# NODE / NEXT.JS
+# =============================================================================
+node_modules/
+.next/
+out/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# =============================================================================
+# SECRETS & CREDENTIALS - NEVER COMMIT THESE
+# =============================================================================
+*.pem
+*.key
+*.p12
+*.crt
+*.env
+!.env.example
+*.env.local
+*.env.*.local
+*.secret
+*.secrets
+credentials.json
+service-account*.json
+aws_credentials
+config.json
+config.yaml
+!config.yaml.example
+
+# =============================================================================
+# IDE / EDITOR
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# =============================================================================
+# OS / SYSTEM
+# =============================================================================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
+
+# =============================================================================
+# CI/CD - LOCAL OVERRIDES
+# =============================================================================
+.github/workflows/*.local.yml
+!.github/workflows/*.local.yml.example
