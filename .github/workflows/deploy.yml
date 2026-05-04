@@ -6,7 +6,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# 🔐 Critical: OIDC permissions
+# 🔐 Critical: OIDC permissions (MUST be at root level)
 permissions:
   id-token: write   # Required for AWS OIDC auth
   contents: read    # Required for checkout
@@ -16,60 +16,171 @@ env:
   ECR_REPOSITORY: b2b-rag-api
   KUSTOMIZE_PATH: infra/k8s/overlays/staging
   CLUSTER_NAME: b2b-rag-cluster
-  # 👇 Replace with your Terraform output: terraform output -raw github_oidc_role_arn
-  AWS_ROLE_ARN: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+  # 🔧 Hardcoded ARN for debugging (replace with ${{ vars.AWS_ROLE_ARN }} after testing)
+  AWS_ROLE_ARN: "arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging"
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     environment: staging
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 🔍 Debug: Verify environment variables are set
+      - name: Debug: Verify AWS_ROLE_ARN
+        run: |
+          echo "🔍 Checking environment variables..."
+          echo "AWS_REGION: $AWS_REGION"
+          echo "AWS_ROLE_ARN length: ${#AWS_ROLE_ARN}"
+          echo "ECR_REPOSITORY: $ECR_REPOSITORY"
+          
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "::error::AWS_ROLE_ARN is empty or not set!"
+            exit 1
+          fi
+          
+          if [[ ! "$AWS_ROLE_ARN" =~ ^arn:aws:iam::[0-9]+:role/ ]]; then
+            echo "::error::AWS_ROLE_ARN format is invalid: $AWS_ROLE_ARN"
+            exit 1
+          fi
+          
+          echo "✅ Environment variables validated"
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ROLE_ARN: ${{ env.AWS_ROLE_ARN }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+
       # 🔐 OIDC Authentication (NO AWS keys!)
+      # Using @v3 for maximum OIDC compatibility; upgrade to @v4 after testing
       - name: Configure AWS Credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          # 🔧 Hardcoded for debugging (uncomment env var version after testing):
+          role-to-assume: "${{ env.AWS_ROLE_ARN }}"
+          # role-to-assume: "${{ vars.AWS_ROLE_ARN }}"  # Alternative: use repo variable
+          aws-region: "${{ env.AWS_REGION }}"
+          audience: "sts.amazonaws.com"
+          # Optional: increase session duration for long builds
+          # role-session-name: "github-actions-${{ github.run_id }}"
+          # role-duration-seconds: 3600
+
+      - name: Verify AWS Credentials (Debug)
+        run: |
+          echo "✅ AWS credentials configured"
+          echo "Account ID: $(aws sts get-caller-identity --query Account --output text)"
+          echo "User ARN: $(aws sts get-caller-identity --query Arn --output text)"
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public  # Change to 'private' if using private ECR
 
       - name: Build & Push Docker Image
         run: |
+          # Validate required secrets exist
+          if [ -z "${{ secrets.ECR_REGISTRY }}" ]; then
+            echo "::error::ECR_REGISTRY secret is not set in GitHub!"
+            exit 1
+          fi
+          
           IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
-          docker build -t $IMAGE_URI -f apps/api/Dockerfile apps/api/
-          docker push $IMAGE_URI
+          echo "🔨 Building image: $IMAGE_URI"
+          
+          docker build \
+            -t "$IMAGE_URI" \
+            -f apps/api/Dockerfile \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from "$IMAGE_URI" \
+            apps/api/
+          
+          echo "📤 Pushing image to ECR..."
+          docker push "$IMAGE_URI"
+          
+          # Also tag as latest for easy reference (optional)
+          docker tag "$IMAGE_URI" "${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest"
+          docker push "${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest"
+          
           echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          echo "✅ Image pushed: $IMAGE_URI"
 
       - name: Update Kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+        run: |
+          echo "🔗 Updating kubeconfig for cluster: $CLUSTER_NAME"
+          aws eks update-kubeconfig \
+            --name "$CLUSTER_NAME" \
+            --region "$AWS_REGION" \
+            --alias "$CLUSTER_NAME"
+          
+          # Verify connection
+          kubectl cluster-info --context "$CLUSTER_NAME" | head -3
 
       - name: Install Kustomize
         run: |
+          echo "📦 Installing Kustomize..."
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
+          kustomize version
 
       - name: Update Kustomize Image Tag
         working-directory: ${{ env.KUSTOMIZE_PATH }}
-        run: kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
+        run: |
+          echo "🔄 Updating Kustomize image tag to: $IMAGE_URI"
+          kustomize edit set image "b2b-rag-api=$IMAGE_URI"
+          
+          # Verify the change
+          echo "📋 Kustomization preview:"
+          kustomize build . | grep -A2 "image:" | head -10
 
       - name: Deploy to EKS
         working-directory: ${{ env.KUSTOMIZE_PATH }}
-        run: kubectl apply -k .
+        run: |
+          echo "🚀 Applying Kubernetes manifests..."
+          kubectl apply -k . --server-side --force-conflicts
+          
+          echo "📋 Current deployments:"
+          kubectl get deployments -l project=b2b-rag -o wide
 
       - name: Wait for Rollout
-        run: kubectl rollout status deployment/api --timeout=300s
+        run: |
+          echo "⏳ Waiting for deployment/api to be ready..."
+          kubectl rollout status deployment/api \
+            --namespace default \
+            --timeout=300s \
+            --watch=true
+          
+          echo "✅ Rollout complete!"
 
       - name: Verify Deployment
         run: |
-          kubectl get pods -l app=api
-          kubectl logs -l app=api --tail=20
+          echo "🔍 Verifying pods..."
+          kubectl get pods -l app=api -o wide
+          
+          echo "📋 Recent logs:"
+          kubectl logs -l app=api --tail=50 --timestamps
+          
+          # Test health endpoint if service exists
+          if kubectl get svc api &>/dev/null; then
+            echo "🌐 Testing health endpoint..."
+            kubectl run test-curl --rm -it --image=curlimages/curl:latest --restart=Never \
+              -- curl -s --max-time 10 http://api/api/v1/health || echo "⚠️ Health check timed out"
+          fi
 
       - name: Notify Success
         if: success()
-        run: echo "✅ Deployed ${{ env.IMAGE_URI }} to ${{ env.CLUSTER_NAME }}"
+        run: |
+          echo "✅ Deployed $IMAGE_URI to $CLUSTER_NAME"
+          echo "🔗 ECR: https://${{ secrets.ECR_REGISTRY }}/repositories/${{ env.ECR_REPOSITORY }}"
+          echo "🔗 EKS Console: https://us-east-1.console.aws.amazon.com/eks/home?region=us-east-1#/clusters/$CLUSTER_NAME"
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed!"
+          echo "🔍 Check logs:"
+          kubectl get pods -l app=api || true
+          kubectl logs -l app=api --tail=100 --timestamps || true
+          kubectl describe deployment api || true
