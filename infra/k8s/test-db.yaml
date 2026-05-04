@@ -1,0 +1,15 @@
+# infra/k8s/test-db.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-test
+  labels: { app: db-test }
+spec:
+  containers:
+    - name: postgres-client
+      image: postgres:16-alpine
+      command: ["sleep", "3600"]
+      envFrom:
+        - secretRef:
+            name: b2b-rag-secrets
+  restartPolicy: Never

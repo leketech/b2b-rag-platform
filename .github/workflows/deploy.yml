@@ -1,0 +1,75 @@
+# .github/workflows/deploy.yml
+name: Deploy FastAPI to EKS (OIDC)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 🔐 Critical: OIDC permissions
+permissions:
+  id-token: write   # Required for AWS OIDC auth
+  contents: read    # Required for checkout
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: b2b-rag-api
+  KUSTOMIZE_PATH: infra/k8s/overlays/staging
+  CLUSTER_NAME: b2b-rag-cluster
+  # 👇 Replace with your Terraform output: terraform output -raw github_oidc_role_arn
+  AWS_ROLE_ARN: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 🔐 OIDC Authentication (NO AWS keys!)
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Docker Image
+        run: |
+          IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          docker build -t $IMAGE_URI -f apps/api/Dockerfile apps/api/
+          docker push $IMAGE_URI
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Update Kustomize Image Tag
+        working-directory: ${{ env.KUSTOMIZE_PATH }}
+        run: kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
+
+      - name: Deploy to EKS
+        working-directory: ${{ env.KUSTOMIZE_PATH }}
+        run: kubectl apply -k .
+
+      - name: Wait for Rollout
+        run: kubectl rollout status deployment/api --timeout=300s
+
+      - name: Verify Deployment
+        run: |
+          kubectl get pods -l app=api
+          kubectl logs -l app=api --tail=20
+
+      - name: Notify Success
+        if: success()
+        run: echo "✅ Deployed ${{ env.IMAGE_URI }} to ${{ env.CLUSTER_NAME }}"
