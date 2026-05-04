@@ -16,8 +16,8 @@ env:
   ECR_REPOSITORY: b2b-rag-api
   KUSTOMIZE_PATH: infra/k8s/overlays/staging
   CLUSTER_NAME: b2b-rag-cluster
-  # 🔧 Hardcoded ARN for debugging (replace with ${{ vars.AWS_ROLE_ARN }} after testing)
-  AWS_ROLE_ARN: "arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging"
+  # ✅ Opt into Node.js 24 to silence deprecation warnings
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build-and-deploy:
@@ -54,18 +54,14 @@ jobs:
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
 
       # 🔐 OIDC Authentication (NO AWS keys!)
-      # Using @v3 for maximum OIDC compatibility; upgrade to @v4 after testing
+      # Using @v3 for maximum OIDC compatibility
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v3
         with:
-          # 🔧 Hardcoded for debugging (uncomment env var version after testing):
-          role-to-assume: "${{ env.AWS_ROLE_ARN }}"
-          # role-to-assume: "${{ vars.AWS_ROLE_ARN }}"  # Alternative: use repo variable
-          aws-region: "${{ env.AWS_REGION }}"
+          # 🔧 HARDCODED ARN - bypasses env var interpolation issues
+          role-to-assume: "arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging"
+          aws-region: "us-east-1"
           audience: "sts.amazonaws.com"
-          # Optional: increase session duration for long builds
-          # role-session-name: "github-actions-${{ github.run_id }}"
-          # role-duration-seconds: 3600
 
       - name: Verify AWS Credentials (Debug)
         run: |
@@ -77,7 +73,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
         with:
-          registry-type: public  # Change to 'private' if using private ECR
+          registry-type: private  # ✅ Changed from 'public' to 'private'
 
       - name: Build & Push Docker Image
         run: |
