@@ -1,25 +1,27 @@
-# Dockerfile
-FROM python:3.11-slim
+# apps/api/Dockerfile
+# Multi-stage build for smaller, faster deployments
+FROM python:3.11-slim AS builder
+WORKDIR /build
 
+# ✅ Copy requirements from build context (apps/api/requirements.txt)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# Final production image
+FROM python:3.11-slim
 WORKDIR /app
 
-# Install dependencies
-COPY apps/api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy installed dependencies from builder
+COPY --from=builder /install /usr/local
 
-# Copy application code
-COPY apps/api/ .
+# ✅ Copy application code from build context (apps/api/.)
+COPY . .
 
-# Run as non-root user
-RUN useradd -m appuser && chown -R appuser /app
+# Security: Run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
-
-# Start the app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start Uvicorn (app.main:app matches the 'app' directory inside apps/api)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
