@@ -1,4 +1,11 @@
-# 1. IAM Role for EKS (no hardcoding)
+# infra/terraform/modules/eks/main.tf
+# =============================================================================
+# EKS Module: Cluster, Node Group, and GitHub Actions OIDC Access
+# =============================================================================
+
+# =============================================================================
+# IAM Role for EKS Cluster
+# =============================================================================
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.cluster_name}-cluster-role"
 
@@ -14,13 +21,14 @@ resource "aws_iam_role" "eks_cluster" {
   })
 }
 
-# 2. Attach required AWS-managed policy
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_cluster.name
 }
 
-# 3. EKS Cluster
+# =============================================================================
+# EKS Cluster (CRITICAL: This was missing - restoring it now)
+# =============================================================================
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.eks_cluster.arn
@@ -30,20 +38,32 @@ resource "aws_eks_cluster" "this" {
     endpoint_public_access = true
   }
 
-  # Ensure IAM policy is attached before cluster creation
+  # Note: We manage authentication_mode via AWS CLI to avoid cluster recreation
+  # access_config {
+  #   authentication_mode = "API_AND_CONFIG_MAP"
+  # }
+
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
 }
 
+# =============================================================================
 # IAM Role for Worker Nodes
+# =============================================================================
 resource "aws_iam_role" "eks_nodes" {
   name = "${var.cluster_name}-node-role"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" } }]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
   })
 }
 
-# Attach required AWS-managed policies
 resource "aws_iam_role_policy_attachment" "eks_nodes" {
   for_each = toset([
     "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
@@ -54,7 +74,9 @@ resource "aws_iam_role_policy_attachment" "eks_nodes" {
   role       = aws_iam_role.eks_nodes.name
 }
 
+# =============================================================================
 # Managed Node Group
+# =============================================================================
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${var.cluster_name}-nodes"
@@ -69,12 +91,49 @@ resource "aws_eks_node_group" "this" {
     max_size     = var.max_size
   }
 
-  update_config { max_unavailable = 1 }
+  update_config {
+    max_unavailable = 1
+  }
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_nodes,
     aws_eks_cluster.this
   ]
 
-  tags = { Environment = var.environment }
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# =============================================================================
+# GitHub Actions OIDC RBAC: Modern EKS Access Entry (AWS-native)
+# =============================================================================
+
+# 1. Create the Access Entry (NO kubernetes_groups for STANDARD type)
+resource "aws_eks_access_entry" "github_actions" {
+  for_each = var.github_actions_role_arn != "" ? toset(["github_actions"]) : toset([])
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.github_actions_role_arn
+  type          = "STANDARD"
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+# 2. Attach Cluster Admin Policy via Policy Association (replaces system:masters)
+resource "aws_eks_access_policy_association" "github_actions_admin" {
+  for_each = var.github_actions_role_arn != "" ? toset(["github_actions"]) : toset([])
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.github_actions_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.github_actions]
 }

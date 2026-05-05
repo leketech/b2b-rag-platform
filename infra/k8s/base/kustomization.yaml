@@ -1,12 +1,9 @@
+# infra/k8s/base/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - api-deployment.yaml
-  - celery-worker-deployment.yaml
-  - celery-beat-deployment.yaml
-  - flower-deployment.yaml
-  - web-deployment.yaml
-  - secret.yaml
-commonLabels:
-  project: b2b-rag
-  managed-by: kustomize
+labels:
+  - pairs:
+      project: b2b-rag
+      managed-by: kustomize

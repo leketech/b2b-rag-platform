@@ -1,39 +1,41 @@
+# infra/terraform/modules/eks/variables.tf
+
 variable "cluster_name" {
   description = "Name of the EKS cluster"
   type        = string
 }
 
 variable "subnet_ids" {
-  description = "List of subnet IDs for EKS (min 2 across different AZs)"
+  description = "Subnet IDs for the EKS cluster"
   type        = list(string)
 }
 
 variable "node_instance_types" {
-  description = "EC2 instance types for worker nodes"
+  description = "EC2 instance types for node group"
   type        = list(string)
   default     = ["t3.medium"]
 }
 
 variable "desired_size" {
-  description = "Desired number of worker nodes"
+  description = "Desired number of nodes"
   type        = number
   default     = 2
 }
 
 variable "min_size" {
-  description = "Minimum number of worker nodes"
+  description = "Minimum number of nodes"
   type        = number
   default     = 1
 }
 
 variable "max_size" {
-  description = "Maximum number of worker nodes"
+  description = "Maximum number of nodes"
   type        = number
   default     = 4
 }
 
 variable "capacity_type" {
-  description = "ON_DEMAND or SPOT"
+  description = "Node capacity type: ON_DEMAND or SPOT"
   type        = string
   default     = "ON_DEMAND"
 }
@@ -41,5 +43,17 @@ variable "capacity_type" {
 variable "environment" {
   description = "Environment name (staging/prod)"
   type        = string
-  default     = "staging"
+}
+
+# 👇 GitHub Actions OIDC Role ARN (optional)
+variable "github_actions_role_arn" {
+  description = "IAM Role ARN for GitHub Actions OIDC access"
+  type        = string
+  default     = ""
+}
+
+variable "authentication_mode" {
+  description = "EKS cluster authentication mode: CONFIG_MAP, API, or API_AND_CONFIG_MAP"
+  type        = string
+  default     = "API_AND_CONFIG_MAP"
 }

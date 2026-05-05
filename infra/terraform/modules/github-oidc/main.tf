@@ -1,27 +1,41 @@
 # modules/github-oidc/main.tf
+# =============================================================================
+# GitHub Actions OIDC Provider + IAM Role for CI/CD
+# =============================================================================
+
+# 1. Data Sources
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# 1. Create OIDC Provider for GitHub Actions
+# 2. Locals
+locals {
+  base_claim = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
+  sub_claim  = var.github_workflow != "" ? "${local.base_claim}:workflow_file:${var.github_workflow}" : local.base_claim
+}
+
+# 3. Resources
+
+# OIDC Provider for GitHub Actions
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  
-  # ✅ BOTH current GitHub thumbprints (valid through 2027)
-  # Source: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+
   thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",  # Primary
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"   # Backup (critical for resilience)
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
   ]
 
   tags = {
-    Name = "github-actions-oidc"
+    Name        = "github-actions-oidc"
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "terraform"
   }
 }
 
-# 2. IAM Role for GitHub Actions (staging environment)
-resource "aws_iam_role" "github_actions_staging" {
-  name = "github-actions-b2b-rag-staging"
+# IAM Role for GitHub Actions
+resource "aws_iam_role" "github_actions" {
+  name = "github-actions-${var.project_name}-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -37,10 +51,7 @@ resource "aws_iam_role" "github_actions_staging" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            # 🔐 Scope to YOUR repo + branch + workflow file
-            "token.actions.githubusercontent.com:sub" = "repo:leketech/b2b-rag-platform:ref:refs/heads/main"
-            # Optional: further restrict to specific workflow file
-            # "token.actions.githubusercontent.com:sub" = "repo:leketech/b2b-rag-platform:ref:refs/heads/main:workflow_file:deploy.yml"
+            "token.actions.githubusercontent.com:sub" = local.sub_claim
           }
         }
       }
@@ -48,26 +59,29 @@ resource "aws_iam_role" "github_actions_staging" {
   })
 
   tags = {
-    Environment = "staging"
-    Project     = "b2b-rag"
+    Name        = "github-actions-${var.project_name}-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "terraform"
   }
 }
 
-# 3. Attach Policies (least privilege)
-resource "aws_iam_role_policy_attachment" "github_actions_staging" {
+# Attach AWS-Managed Policies
+resource "aws_iam_role_policy_attachment" "github_actions" {
   for_each = toset([
-    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser", # Push to ECR
-    "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",                # Update kubeconfig
-    "arn:aws:iam::aws:policy/SecretsManagerReadWrite"              # Read b2b-rag/* secrets
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser",
+    "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+    "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
   ])
+
   policy_arn = each.value
-  role       = aws_iam_role.github_actions_staging.name
+  role       = aws_iam_role.github_actions.name
 }
 
-# 4. # Inline policy for EKS cluster access (describe + update-kubeconfig)
+# Inline Policy: EKS Cluster Access
 resource "aws_iam_role_policy" "github_actions_eks" {
-  name = "github-actions-eks-access"
-  role = aws_iam_role.github_actions_staging.id  # ✅ Fixed typo here
+  name = "github-actions-eks-access-${var.environment}"
+  role = aws_iam_role.github_actions.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -78,18 +92,8 @@ resource "aws_iam_role_policy" "github_actions_eks" {
           "eks:DescribeCluster",
           "eks:ListClusters"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/b2b-rag-cluster"
+        Resource = "arn:aws:eks:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       }
     ]
   })
-}
-
-# 5. Outputs for GitHub workflow
-output "role_arn" {
-  description = "IAM Role ARN for GitHub Actions (staging)"
-  value       = aws_iam_role.github_actions_staging.arn
-}
-
-output "oidc_provider_arn" {
-  value = aws_iam_openid_connect_provider.github.arn
 }

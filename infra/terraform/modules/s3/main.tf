@@ -37,6 +37,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 }
 
 # Optional: Lifecycle rule to expire old versions
+# infra/terraform/modules/s3/main.tf - around the lifecycle rule
+
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -44,8 +46,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     id     = "expire-old-versions"
     status = "Enabled"
 
+    # ✅ Required filter block (AWS Provider 5.x+)
+    filter {
+      prefix = ""  # Apply to all objects
+    }
+
     noncurrent_version_expiration {
-      noncurrent_days = 30
+      noncurrent_days = 90
     }
   }
 }

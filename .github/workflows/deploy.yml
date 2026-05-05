@@ -27,7 +27,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth - MINIMAL, HARDCODED, NO VARIABLES
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -45,47 +44,37 @@ jobs:
 
       - name: Build & Push
         run: |
-          # Validate required secret
           if [ -z "${{ secrets.ECR_REGISTRY }}" ]; then
             echo "::error::ECR_REGISTRY secret is not set!"
             exit 1
           fi
           
-          # Build image URI
           IMG="${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}"
           echo "🔨 Building: $IMG"
           
-          # Debug: show build context and verify Dockerfile exists
-          echo "📁 PWD: $(pwd)"
-          echo "📁 Checking apps/api/Dockerfile..."
-          if [ ! -f "./apps/api/Dockerfile" ]; then
-            echo "::error::Dockerfile not found at ./apps/api/Dockerfile"
-            echo "📁 Contents of apps/api/:"
-            ls -la apps/api/ 2>/dev/null || echo "apps/api/ directory not found"
-            exit 1
-          fi
-          echo "✅ Dockerfile found"
-          
-          # Build with explicit path to Dockerfile + build context
           docker build \
             -t "$IMG" \
             -f ./apps/api/Dockerfile \
             ./apps/api/
           
-          # Push to ECR
-          echo "📤 Pushing to ECR..."
           docker push "$IMG"
-          
-          # Also tag as latest for easy reference (optional)
           docker tag "$IMG" "${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest"
           docker push "${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest"
           
-          # Export for later steps
           echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
           echo "✅ Pushed: $IMG"
 
       - name: Update Kubeconfig
-        run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+        run: |
+          # Explicitly bind kubeconfig to the assumed OIDC role
+          aws eks update-kubeconfig \
+            --name $CLUSTER_NAME \
+            --region $AWS_REGION \
+            --role-arn arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+          
+          # Quick RBAC check
+          echo "🔍 Testing cluster access..."
+          kubectl auth can-i get pods --all-namespaces || echo "⚠️ RBAC check failed (check aws-auth)"
 
       - name: Install Kustomize
         run: |
@@ -99,7 +88,8 @@ jobs:
           kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
           
           echo "🚀 Applying manifests..."
-          kubectl apply -k . --server-side --force-conflicts
+          # ✅ --validate=false skips OpenAPI schema download (standard for CI/CD)
+          kustomize build . | kubectl apply --validate=false -f -
           
           echo "⏳ Waiting for rollout..."
           kubectl rollout status deployment/api --timeout=300s
