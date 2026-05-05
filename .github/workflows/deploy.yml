@@ -3,11 +3,11 @@ name: Deploy FastAPI to EKS (OIDC)
 
 on:
   push:
-    branches: [main]  # ✅ Only trigger on direct pushes to main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  id-token: write  # ✅ Required for OIDC
+  id-token: write
   contents: read
 
 env:
@@ -27,28 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔍 DEBUG: Show OIDC token claims (remove after fixing)
-      - name: Debug: Show OIDC Token Claims
-        run: |
-          echo "🔍 Requesting OIDC token..."
-          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          echo "✅ Token received (first 50 chars): ${TOKEN:0:50}..."
-          
-          # Decode JWT payload (base64url)
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null || echo "[decode failed]")
-          echo "📋 Decoded payload:"
-          echo "$PAYLOAD" | jq -c '{sub, aud, iss, repository, ref}' 2>/dev/null || echo "$PAYLOAD"
-          
-          # Save sub claim for comparison
-          SUB_CLAIM=$(echo "$PAYLOAD" | jq -r '.sub // empty' 2>/dev/null)
-          echo "🔑 sub claim: $SUB_CLAIM"
-          echo "SUB_CLAIM=$SUB_CLAIM" >> $GITHUB_ENV
-        env:
-          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ actions.id-token-request-url }}
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 🔐 OIDC Auth - MINIMAL, HARDCODED, NO VARIABLES
+      # 🔐 OIDC Auth
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -57,36 +36,41 @@ jobs:
           audience: sts.amazonaws.com
 
       - name: Verify Auth
-        run: |
-          echo "✅ Auth successful!"
-          aws sts get-caller-identity
+        run: aws sts get-caller-identity
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: private
 
+      # ✅ ADD THIS: Set up Docker Buildx (required for GitHub Actions cache)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:master
+            network=host
+
       - name: Build & Push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
+            ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Export image URI for later steps
+          outputs: type=image,name=${{ secrets.ECR_REGISTRY }}/b2b-rag-api,push-by-digest=true,name-canonical=true,push=true
+
+      # ✅ Export IMAGE_URI for Kustomize step
+      - name: Export Image URI
         run: |
-          if [ -z "${{ secrets.ECR_REGISTRY }}" ]; then
-            echo "::error::ECR_REGISTRY secret is not set!"
-            exit 1
-          fi
-          
           IMG="${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}"
-          echo "🔨 Building: $IMG"
-          
-          docker build \
-            -t "$IMG" \
-            -f ./apps/api/Dockerfile \
-            ./apps/api/
-          
-          docker push "$IMG"
-          docker tag "$IMG" "${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest"
-          docker push "${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest"
-          
           echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
-          echo "✅ Pushed: $IMG"
+          echo "✅ Image URI: $IMG"
 
       - name: Update Kubeconfig
         run: |
