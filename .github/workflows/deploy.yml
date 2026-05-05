@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
+  id-token: write  # Required for OIDC
   contents: read
 
 env:
@@ -27,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth - assumes the role via GitHub OIDC
+      # 🔐 OIDC Auth - assumes role via GitHub OIDC
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -36,30 +36,28 @@ jobs:
           audience: sts.amazonaws.com
 
       - name: Verify Auth
-        run: |
-          echo "✅ Authenticated as:"
-          aws sts get-caller-identity --query '[Account,Arn,UserId]' --output text
+        run: aws sts get-caller-identity
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: private
 
-      # ✅ Set up Docker Buildx with explicit builder name
+      # ✅ FIX: Set up Docker Buildx with docker-container driver (required for GHA cache)
       - name: Set up Docker Buildx
-        id: buildx
+        id: buildx  # ← CRITICAL: Required for steps.buildx.outputs.name
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container
+          driver: docker-container  # ← Required for type=gha cache
           driver-opts: |
             image=moby/buildkit:latest
           buildkitd-flags: --debug
 
-      # ✅ Build & Push — explicitly reference the builder
+      # ✅ Build & Push — explicitly reference the builder name
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
-          builder: ${{ steps.buildx.outputs.name }}
+          builder: ${{ steps.buildx.outputs.name }}  # ← CRITICAL: Use the builder created above
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
@@ -68,7 +66,7 @@ jobs:
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: false  # Optional: skip SBOM if not needed
 
       # ✅ Export IMAGE_URI for Kustomize step
       - name: Export Image URI
@@ -77,7 +75,7 @@ jobs:
           echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
           echo "✅ Image URI: $IMG"
 
-      # ✅ FIX: Update Kubeconfig WITHOUT --role-arn (already running as the role)
+      # ✅ Update Kubeconfig WITHOUT --role-arn (already running as the role via OIDC)
       - name: Update Kubeconfig
         run: |
           echo "🔗 Updating kubeconfig for cluster: $CLUSTER_NAME"
@@ -105,26 +103,17 @@ jobs:
           
           echo "✅ Deploy complete!"
 
-                # 🔍 DEBUG: Capture diagnostics if rollout fails
+      # 🔍 DEBUG: Capture diagnostics if rollout fails
       - name: Debug: Rollout Diagnostics
         if: failure()
         working-directory: ${{ env.KUSTOMIZE_PATH }}
         run: |
           echo "❌ Rollout failed — collecting diagnostics:"
-          
           echo "📋 Pod status:"
           kubectl get pods -l app=api -n default -o wide || true
-          
           echo "📋 Pod events:"
           kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
-          
           echo "📋 Pod logs:"
           kubectl logs -l app=api -n default --tail=50 || true
           kubectl logs -l app=api -n default --previous --tail=50 2>/dev/null || true
-          
-          echo "📋 Node resources:"
-          kubectl top nodes 2>/dev/null || echo "⚠️ Metrics server not available"
-          
-          echo "📋 Deployment status:"
-          kubectl describe deployment api -n default | grep -A 10 "Conditions:" || true
         continue-on-error: true
