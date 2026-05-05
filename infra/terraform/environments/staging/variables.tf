@@ -38,13 +38,13 @@ variable "private_subnet_azs" {
 variable "node_instance_types" {
   description = "EC2 instance types for EKS nodes"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.micro"]
 }
 
 variable "desired_size" {
   description = "Desired number of EKS nodes"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "min_size" {

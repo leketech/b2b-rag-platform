@@ -1,8 +1,12 @@
 # infra/k8s/base/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 resources:
   - api-deployment.yaml
+  - serviceaccount.yaml  # ← ADD THIS LINE
+  # ... other resources
+
 labels:
   - pairs:
       project: b2b-rag
