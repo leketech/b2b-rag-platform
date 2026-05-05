@@ -47,7 +47,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container  # ← CRITICAL: Forces correct driver for cache support
+          driver: docker-container
+          install: true  # ← CRITICAL: Forces correct driver for cache support
           buildkitd-flags: --debug
 
       # 🔍 DEBUG: Verify builder is using correct driver (remove after confirming fix)
