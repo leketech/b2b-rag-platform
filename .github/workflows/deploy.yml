@@ -43,24 +43,21 @@ jobs:
         with:
           registry-type: private
 
-      # ✅ FIX: Set up Docker Buildx with EXPLICIT docker-container driver
+      # ✅ Set up Docker Buildx with explicit builder name
       - name: Set up Docker Buildx
+        id: buildx  # ← CRITICAL: Required for steps.buildx.outputs.name
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
-          install: true  # ← CRITICAL: Forces correct driver for cache support
+          driver-opts: |
+            image=moby/buildkit:latest
           buildkitd-flags: --debug
 
-      # 🔍 DEBUG: Verify builder is using correct driver (remove after confirming fix)
-      - name: Check builder driver
-        run: |
-          echo "🔍 Inspecting Buildx builder..."
-          docker buildx inspect --bootstrap
-          echo "✅ Builder info above — look for 'Driver: docker-container'"
-
+      # ✅ Build & Push — explicitly reference the builder
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
+          builder: ${{ steps.buildx.outputs.name }}  # ← CRITICAL: Use the builder created above
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
@@ -69,6 +66,7 @@ jobs:
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
 
       # ✅ Export IMAGE_URI for Kustomize step
       - name: Export Image URI
