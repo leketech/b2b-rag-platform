@@ -3,11 +3,11 @@ name: Deploy FastAPI to EKS (OIDC)
 
 on:
   push:
-    branches: [main]
+    branches: [main]  # ✅ Only trigger on direct pushes to main
   workflow_dispatch:
 
 permissions:
-  id-token: write
+  id-token: write  # ✅ Required for OIDC
   contents: read
 
 env:
@@ -27,6 +27,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 🔍 DEBUG: Show OIDC token claims (remove after fixing)
+      - name: Debug: Show OIDC Token Claims
+        run: |
+          echo "🔍 Requesting OIDC token..."
+          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          echo "✅ Token received (first 50 chars): ${TOKEN:0:50}..."
+          
+          # Decode JWT payload (base64url)
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null || echo "[decode failed]")
+          echo "📋 Decoded payload:"
+          echo "$PAYLOAD" | jq -c '{sub, aud, iss, repository, ref}' 2>/dev/null || echo "$PAYLOAD"
+          
+          # Save sub claim for comparison
+          SUB_CLAIM=$(echo "$PAYLOAD" | jq -r '.sub // empty' 2>/dev/null)
+          echo "🔑 sub claim: $SUB_CLAIM"
+          echo "SUB_CLAIM=$SUB_CLAIM" >> $GITHUB_ENV
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ actions.id-token-request-url }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 🔐 OIDC Auth - MINIMAL, HARDCODED, NO VARIABLES
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -35,7 +57,9 @@ jobs:
           audience: sts.amazonaws.com
 
       - name: Verify Auth
-        run: aws sts get-caller-identity
+        run: |
+          echo "✅ Auth successful!"
+          aws sts get-caller-identity
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -66,15 +90,10 @@ jobs:
 
       - name: Update Kubeconfig
         run: |
-          # Explicitly bind kubeconfig to the assumed OIDC role
           aws eks update-kubeconfig \
             --name $CLUSTER_NAME \
             --region $AWS_REGION \
             --role-arn arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
-          
-          # Quick RBAC check
-          echo "🔍 Testing cluster access..."
-          kubectl auth can-i get pods --all-namespaces || echo "⚠️ RBAC check failed (check aws-auth)"
 
       - name: Install Kustomize
         run: |
@@ -88,7 +107,6 @@ jobs:
           kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
           
           echo "🚀 Applying manifests..."
-          # ✅ --validate=false skips OpenAPI schema download (standard for CI/CD)
           kustomize build . | kubectl apply --validate=false -f -
           
           echo "⏳ Waiting for rollout..."
