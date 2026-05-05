@@ -50,13 +50,13 @@ variable "desired_size" {
 variable "min_size" {
   description = "Minimum number of EKS nodes"
   type        = number
-  default     = 1
+  default     = 0
 }
 
 variable "max_size" {
   description = "Maximum number of EKS nodes"
   type        = number
-  default     = 4
+  default     = 1
 }
 
 variable "capacity_type" {

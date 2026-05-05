@@ -6,7 +6,7 @@ metadata:
     app: api
     project: b2b-rag
 spec:
-  replicas: 1  # ← Single replica to fit in 1 GiB node
+  replicas: 1
   selector:
     matchLabels:
       app: api
@@ -15,76 +15,58 @@ spec:
       labels:
         app: api
         project: b2b-rag
-      # ✅ Optional: Remove Prometheus annotations to save ~50Mi RAM if not needed
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: b2b-rag-api
-      
-      # Security context (kept for security, but ensure app doesn't need writes)
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
-      
-      # ✅ CRITICAL: Add writable volumes for readOnlyRootFilesystem compatibility
       volumes:
         - name: tmp-volume
           emptyDir: {}
         - name: app-cache
           emptyDir: {}
-      
       containers:
         - name: api
-          # 🔄 Kustomize will replace this image
           image: b2b-rag-api:latest
-          imagePullPolicy: IfNotPresent  # ← Save bandwidth on free tier
-          
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
-          
           envFrom:
             - secretRef:
                 name: b2b-rag-secrets
-          
-          # ✅ OPTIMIZED: Minimal resources for t3.micro (1 GiB total)
           resources:
             requests:
-              cpu: "50m"      # ← Reduced from 250m (5% of 1 vCPU)
-              memory: "128Mi" # ← Reduced from 512Mi (12.5% of 1 GiB)
+              cpu: "50m"
+              memory: "128Mi"
             limits:
-              cpu: "200m"     # ← Reduced from 1000m (burst allowed)
-              memory: "256Mi" # ← Reduced from 1Gi (hard limit to prevent OOM)
-          
-          # ✅ Mount writable volumes (required for readOnlyRootFilesystem)
+              cpu: "200m"
+              memory: "256Mi"
           volumeMounts:
             - name: tmp-volume
               mountPath: /tmp
             - name: app-cache
-              mountPath: /app/.cache  # Adjust if your app writes elsewhere
-          
-          # ✅ Relaxed probes for low-resource testing (adjust after validation)
+              mountPath: /app/.cache
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 20  # ← Increased: app may start slower with low CPU
+            initialDelaySeconds: 20
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
-          
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 45  # ← Increased: allow time for cold start
+            initialDelaySeconds: 45
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
-          
-          # Security context (kept for defense-in-depth)
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -115,12 +97,12 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api
-  minReplicas: 1  # ← Start with 1 replica (Free Tier constraint)
-  maxReplicas: 2  # ← Max 2 to avoid overcommitting the single node
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 80  # ← Higher threshold to avoid premature scaling
+          averageUtilization: 80
