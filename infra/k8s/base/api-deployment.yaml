@@ -1,3 +1,4 @@
+# infra/k8s/base/api-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +8,8 @@ metadata:
     project: b2b-rag
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # ← Kill old pod before starting new (avoids resource contention on single node)
   selector:
     matchLabels:
       app: api
@@ -39,32 +42,42 @@ spec:
           envFrom:
             - secretRef:
                 name: b2b-rag-secrets
+          # ✅ Free Tier Optimized Resources
           resources:
             requests:
               cpu: "50m"
               memory: "128Mi"
             limits:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: "300m"    # ← Slightly higher burst for cold start
+              memory: "384Mi" # ← Increased from 256Mi to prevent OOM on startup
           volumeMounts:
             - name: tmp-volume
               mountPath: /tmp
             - name: app-cache
               mountPath: /app/.cache
+          # ✅ More Forgiving Probes for Low-Resource Cold Starts
+          startupProbe:  # ← NEW: Gives app extra time to start before readiness checks begin
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30  # ← Allow up to 5 minutes for cold start (30 × 10s)
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 20
-            periodSeconds: 15
+            initialDelaySeconds: 15  # ← Wait 15s after startupProbe passes
+            periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 45
-            periodSeconds: 20
+            initialDelaySeconds: 60  # ← Wait 60s before checking liveness
+            periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           securityContext:
@@ -98,7 +111,7 @@ spec:
     kind: Deployment
     name: api
   minReplicas: 1
-  maxReplicas: 2
+  maxReplicas: 1  # ← Keep at 1 for Free Tier single-node setup
   metrics:
     - type: Resource
       resource:

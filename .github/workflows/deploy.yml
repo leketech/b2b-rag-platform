@@ -104,3 +104,27 @@ jobs:
           kubectl rollout status deployment/api --timeout=300s
           
           echo "✅ Deploy complete!"
+
+                # 🔍 DEBUG: Capture diagnostics if rollout fails
+      - name: Debug: Rollout Diagnostics
+        if: failure()
+        working-directory: ${{ env.KUSTOMIZE_PATH }}
+        run: |
+          echo "❌ Rollout failed — collecting diagnostics:"
+          
+          echo "📋 Pod status:"
+          kubectl get pods -l app=api -n default -o wide || true
+          
+          echo "📋 Pod events:"
+          kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
+          
+          echo "📋 Pod logs:"
+          kubectl logs -l app=api -n default --tail=50 || true
+          kubectl logs -l app=api -n default --previous --tail=50 2>/dev/null || true
+          
+          echo "📋 Node resources:"
+          kubectl top nodes 2>/dev/null || echo "⚠️ Metrics server not available"
+          
+          echo "📋 Deployment status:"
+          kubectl describe deployment api -n default | grep -A 10 "Conditions:" || true
+        continue-on-error: true
