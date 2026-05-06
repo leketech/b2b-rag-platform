@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: Deploy FastAPI to EKS (Free Tier)
 
 on:
@@ -7,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write  # Required for OIDC
+  id-token: write
   contents: read
 
 env:
@@ -15,7 +14,6 @@ env:
   ECR_REPOSITORY: b2b-rag-api
   KUSTOMIZE_PATH: infra/k8s/overlays/staging
   CLUSTER_NAME: b2b-rag-cluster
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build-and-deploy:
@@ -24,76 +22,94 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # 📥 Checkout repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth
+      # 🔐 Authenticate to AWS via OIDC
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
           role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
-          aws-region: us-east-1
-          audience: sts.amazonaws.com
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify Auth
+      - name: Verify AWS Auth
         run: aws sts get-caller-identity
 
+      # 🔑 Login to ECR
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
-        with:
-          registry-type: private
 
-      # ✅ Build & Push WITHOUT cache (simpler, avoids Buildx driver issues)
-      - name: Build & Push
+      # 🔍 Debug: Ensure Dockerfile exists
+      - name: Verify Dockerfile
+        run: |
+          echo "Checking Dockerfile..."
+          ls -la apps/api/
+          test -f apps/api/Dockerfile || (echo "❌ Dockerfile missing!" && exit 1)
+
+      # 🐳 Build & Push (NO CACHE)
+      - name: Build & Push Image
         uses: docker/build-push-action@v5
         with:
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
+          platforms: linux/amd64
           tags: |
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
-          # ✅ Removed cache-from/cache-to to avoid Buildx driver complexity
           provenance: false
 
+      # 📦 Export image URI
       - name: Export Image URI
         run: |
-          IMG="${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}"
-          echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
+          IMAGE_URI=${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          echo "✅ Built image: $IMAGE_URI"
 
-      # ✅ Update Kubeconfig WITHOUT --role-arn (already authenticated via OIDC)
-      - name: Update Kubeconfig
+      # ☸️ Configure kubectl for EKS
+      - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --name $CLUSTER_NAME \
             --region $AWS_REGION
 
+      # 🔧 Install Kustomize
       - name: Install Kustomize
         run: |
           curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
           sudo mv kustomize /usr/local/bin/
 
-      - name: Deploy
+      # 🚀 Deploy to cluster
+      - name: Deploy to EKS
         working-directory: ${{ env.KUSTOMIZE_PATH }}
         run: |
-          echo "🔄 Updating Kustomize image to: $IMAGE_URI"
-          kustomize edit set image b2b-rag-api=${{ env.IMAGE_URI }}
-          
+          echo "🔄 Setting image: $IMAGE_URI"
+          kustomize edit set image b2b-rag-api=${IMAGE_URI}
+
+          echo "📦 Rendering manifests..."
+          kustomize build .
+
           echo "🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
-          
+
           echo "⏳ Waiting for rollout..."
           kubectl rollout status deployment/api --timeout=300s
-          
-          echo "✅ Deploy complete!"
 
-      # 🔍 Debug step if rollout fails
-      - name: Debug: Rollout Diagnostics
+          echo "✅ Deployment successful"
+
+      # 🧪 Debug if something fails
+      - name: Debug rollout failure
         if: failure()
-        working-directory: ${{ env.KUSTOMIZE_PATH }}
         run: |
-          echo "❌ Rollout failed — diagnostics:"
-          kubectl get pods -l app=api -n default -o wide || true
-          kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
-          kubectl logs -l app=api -n default --tail=50 || true
+          echo "❌ Deployment failed. Debugging..."
+
+          echo "📦 Pods:"
+          kubectl get pods -o wide
+
+          echo "📄 Describe pods:"
+          kubectl describe pods | tail -n 50
+
+          echo "📜 Logs:"
+          kubectl logs -l app=api --tail=100 || true
         continue-on-error: true
