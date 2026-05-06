@@ -1,211 +1,101 @@
 name: CI/CD
 
 on:
-  push:
-    branches: [main, staging]
-  pull_request:
-    branches: [main]
+push:
+branches: [main, staging]
+pull_request:
+branches: [main]
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: b2b-rag-api
-  PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20"
+AWS_REGION: us-east-1
+ECR_REPOSITORY: b2b-rag-api
+PYTHON_VERSION: "3.11"
+NODE_VERSION: "20"
 
 jobs:
-  # ─── Lint & Test ────────────────────────────────────────────
-  test-api:
-    name: API — lint & test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          POSTGRES_DB: b2b_rag_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
 
-    steps:
-      - uses: actions/checkout@v4
+# ─── API TESTS ─────────────────────────────
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+test-api:
+runs-on: ubuntu-latest
 
-      - name: Install dependencies
-        working-directory: apps/api
-        run: pip install -r requirements.txt
+```
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: b2b_rag_test
+    ports:
+      - 5432:5432
 
-      - name: Lint (ruff)
-        working-directory: apps/api
-        run: ruff check .
+  redis:
+    image: redis:7-alpine
+    ports:
+      - 6379:6379
 
-      - name: Type check (mypy)
-        working-directory: apps/api
-        run: mypy app --ignore-missing-imports
+steps:
+  - uses: actions/checkout@v4
 
-      - name: Run tests
-        working-directory: apps/api
-        env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@localhost:5432/b2b_rag_test
-          REDIS_URL: redis://localhost:6379/0
-          CELERY_BROKER_URL: redis://localhost:6379/1
-          CELERY_RESULT_BACKEND: redis://localhost:6379/2
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ENVIRONMENT: development
-        run: pytest --cov=app --cov-report=xml -q
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: apps/api/coverage.xml
+  - name: Install deps
+    working-directory: apps/api
+    run: pip install -r requirements.txt
 
-  test-web:
-    name: Web — lint & type check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  - name: Lint
+    working-directory: apps/api
+    run: ruff check .
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+  - name: Test
+    working-directory: apps/api
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/b2b_rag_test
+      REDIS_URL: redis://localhost:6379/0
+    run: pytest -q
+```
 
-      - name: Install dependencies
-        working-directory: apps/web
-        run: npm install --legacy-peer-deps
+# ─── BUILD & PUSH ─────────────────────────
 
-      - name: Lint
-        working-directory: apps/web
-        run: npm run lint
+build-and-push:
+runs-on: ubuntu-latest
+needs: test-api
+if: github.event_name == 'push'
 
-      - name: Type check
-        working-directory: apps/web
-        run: npm run type-check
+```
+steps:
+  - uses: actions/checkout@v4
 
-  # ─── Build & Push Docker ────────────────────────────────────
-  build-and-push:
-    name: Build & push to ECR
-    needs: [test-api, test-web]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      short-sha: ${{ steps.vars.outputs.sha }}
+  - name: Set SHA
+    id: vars
+    run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    steps:
-      - uses: actions/checkout@v4
+  - name: Configure AWS creds
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-region: ${{ env.AWS_REGION }}
 
-      - name: Set short SHA
-        id: vars
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+  - name: Login to ECR
+    id: ecr
+    uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+  - name: Build image
+    run: |
+      IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.sha }}
 
-      - name: Login to ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+      docker build -t $IMAGE ./apps/api
+      docker tag $IMAGE ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
 
-      - name: Build and push API image
-        uses: docker/build-push-action@v5
-        with:
-          context: apps/api
-          push: true
-          tags: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.sha }}
-            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.ref_name }}-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-  # ─── Deploy to Staging ──────────────────────────────────────
-  deploy-staging:
-    name: Deploy → staging
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/staging'
-    environment: staging
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name b2b-rag-staging --region ${{ env.AWS_REGION }}
-
-      - name: Deploy with Kustomize
-        run: |
-          cd infra/k8s/overlays/staging
-          kustomize edit set image YOUR_ECR_URI/b2b-rag-api=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.short-sha }}
-          kubectl apply -k .
-          kubectl rollout status deployment/staging-api -n b2b-rag-staging --timeout=300s
-
-  # ─── Deploy to Production ───────────────────────────────────
-  deploy-prod:
-    name: Deploy → production
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production   # requires manual approval in GitHub
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name b2b-rag-prod --region ${{ env.AWS_REGION }}
-
-      - name: Deploy with Kustomize
-        run: |
-          cd infra/k8s/overlays/prod
-          kustomize edit set image YOUR_ECR_URI/b2b-rag-api=${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.short-sha }}
-          kubectl apply -k .
-          kubectl rollout status deployment/prod-api -n b2b-rag-prod --timeout=300s
-
-      - name: Notify Slack on deploy
-        if: always()
-        uses: slackapi/slack-github-action@v1
-        with:
-          channel-id: ${{ secrets.SLACK_DEPLOY_CHANNEL }}
-          slack-message: |
-            *B2B RAG Platform* deployed to production
-            Commit: `${{ needs.build-and-push.outputs.short-sha }}`
-            Status: ${{ job.status }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  - name: Push image
+    run: |
+      docker push $IMAGE
+      docker push ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+```

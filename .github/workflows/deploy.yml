@@ -1,94 +1,77 @@
-name: Deploy FastAPI to EKS (Free Tier)
+name: Deploy to EKS
 
 on:
-push:
-branches: [main]
-workflow_dispatch:
-
-permissions:
-id-token: write
-contents: read
+workflow_run:
+workflows: ["CI/CD"]
+types:
+- completed
 
 env:
 AWS_REGION: us-east-1
-ECR_REPOSITORY: b2b-rag-api
-KUSTOMIZE_PATH: infra/k8s/overlays/staging
 CLUSTER_NAME: b2b-rag-cluster
 
 jobs:
-build-and-deploy:
+deploy-staging:
+if: >
+github.event.workflow_run.conclusion == 'success' &&
+github.event.workflow_run.head_branch == 'staging'
 runs-on: ubuntu-latest
-environment: staging
-timeout-minutes: 30
 
 ```
 steps:
-  # 📥 Checkout repo
-  - name: Checkout
-    uses: actions/checkout@v4
+  - uses: actions/checkout@v4
 
-  # 🔐 Authenticate with AWS via OIDC
-  - name: Configure AWS Credentials
-    uses: aws-actions/configure-aws-credentials@v3
+  - name: Configure AWS
+    uses: aws-actions/configure-aws-credentials@v4
     with:
-      role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       aws-region: ${{ env.AWS_REGION }}
 
-  - name: Verify Auth
-    run: aws sts get-caller-identity
+  - name: Update kubeconfig
+    run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
-  # 🔑 Login to ECR
-  - name: Login to ECR
-    uses: aws-actions/amazon-ecr-login@v2
-
-  # 🐳 Build & Push (NO CACHE, NO BUILDX ISSUES)
-  - name: Build Docker Image
-    run: |
-      IMAGE_URI=${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
-      echo "Building image: $IMAGE_URI"
-
-      docker build -t $IMAGE_URI ./apps/api
-      docker tag $IMAGE_URI ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
-
-      echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
-
-  - name: Push Docker Image
-    run: |
-      docker push $IMAGE_URI
-      docker push ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
-
-  # ⚙️ Configure kubectl for EKS
-  - name: Update Kubeconfig
-    run: |
-      aws eks update-kubeconfig \
-        --name $CLUSTER_NAME \
-        --region $AWS_REGION
-
-  # 📦 Install Kustomize
   - name: Install Kustomize
     run: |
       curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
       sudo mv kustomize /usr/local/bin/
 
-  # 🚀 Deploy to EKS
-  - name: Deploy
-    working-directory: ${{ env.KUSTOMIZE_PATH }}
+  - name: Deploy staging
     run: |
-      echo "Updating image to: $IMAGE_URI"
-      kustomize edit set image b2b-rag-api=$IMAGE_URI
-
-      echo "Applying manifests..."
-      kustomize build . | kubectl apply --validate=false -f -
-
-      echo "Waiting for rollout..."
+      cd infra/k8s/overlays/staging
+      kubectl apply -k .
       kubectl rollout status deployment/api --timeout=300s
+```
 
-  # 🔍 Debug if deployment fails
-  - name: Debug
-    if: failure()
+deploy-prod:
+if: >
+github.event.workflow_run.conclusion == 'success' &&
+github.event.workflow_run.head_branch == 'main'
+runs-on: ubuntu-latest
+environment: production
+
+```
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Configure AWS
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-region: ${{ env.AWS_REGION }}
+
+  - name: Update kubeconfig
+    run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+
+  - name: Install Kustomize
     run: |
-      echo "Deployment failed. Debugging..."
-      kubectl get pods -o wide
-      kubectl describe pods | grep -A 20 Events || true
-      kubectl logs -l app=api --tail=50 || true
+      curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+      sudo mv kustomize /usr/local/bin/
+
+  - name: Deploy prod
+    run: |
+      cd infra/k8s/overlays/prod
+      kubectl apply -k .
+      kubectl rollout status deployment/api --timeout=300s
 ```
