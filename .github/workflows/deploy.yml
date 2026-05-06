@@ -1,115 +1,94 @@
 name: Deploy FastAPI to EKS (Free Tier)
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+push:
+branches: [main]
+workflow_dispatch:
 
 permissions:
-  id-token: write
-  contents: read
+id-token: write
+contents: read
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: b2b-rag-api
-  KUSTOMIZE_PATH: infra/k8s/overlays/staging
-  CLUSTER_NAME: b2b-rag-cluster
+AWS_REGION: us-east-1
+ECR_REPOSITORY: b2b-rag-api
+KUSTOMIZE_PATH: infra/k8s/overlays/staging
+CLUSTER_NAME: b2b-rag-cluster
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    environment: staging
-    timeout-minutes: 30
+build-and-deploy:
+runs-on: ubuntu-latest
+environment: staging
+timeout-minutes: 30
 
-    steps:
-      # 📥 Checkout repo
-      - name: Checkout
-        uses: actions/checkout@v4
+```
+steps:
+  # 📥 Checkout repo
+  - name: Checkout
+    uses: actions/checkout@v4
 
-      # 🔐 Authenticate to AWS via OIDC
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
-          aws-region: ${{ env.AWS_REGION }}
+  # 🔐 Authenticate with AWS via OIDC
+  - name: Configure AWS Credentials
+    uses: aws-actions/configure-aws-credentials@v3
+    with:
+      role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+      aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify AWS Auth
-        run: aws sts get-caller-identity
+  - name: Verify Auth
+    run: aws sts get-caller-identity
 
-      # 🔑 Login to ECR
-      - name: Login to ECR
-        uses: aws-actions/amazon-ecr-login@v2
+  # 🔑 Login to ECR
+  - name: Login to ECR
+    uses: aws-actions/amazon-ecr-login@v2
 
-      # 🔍 Debug: Ensure Dockerfile exists
-      - name: Verify Dockerfile
-        run: |
-          echo "Checking Dockerfile..."
-          ls -la apps/api/
-          test -f apps/api/Dockerfile || (echo "❌ Dockerfile missing!" && exit 1)
+  # 🐳 Build & Push (NO CACHE, NO BUILDX ISSUES)
+  - name: Build Docker Image
+    run: |
+      IMAGE_URI=${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
+      echo "Building image: $IMAGE_URI"
 
-      # 🐳 Build & Push (NO CACHE)
-      - name: Build & Push Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/api
-          file: ./apps/api/Dockerfile
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
-            ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
-          provenance: false
+      docker build -t $IMAGE_URI ./apps/api
+      docker tag $IMAGE_URI ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
 
-      # 📦 Export image URI
-      - name: Export Image URI
-        run: |
-          IMAGE_URI=${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
-          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
-          echo "✅ Built image: $IMAGE_URI"
+      echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
-      # ☸️ Configure kubectl for EKS
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig \
-            --name $CLUSTER_NAME \
-            --region $AWS_REGION
+  - name: Push Docker Image
+    run: |
+      docker push $IMAGE_URI
+      docker push ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
 
-      # 🔧 Install Kustomize
-      - name: Install Kustomize
-        run: |
-          curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
-          sudo mv kustomize /usr/local/bin/
+  # ⚙️ Configure kubectl for EKS
+  - name: Update Kubeconfig
+    run: |
+      aws eks update-kubeconfig \
+        --name $CLUSTER_NAME \
+        --region $AWS_REGION
 
-      # 🚀 Deploy to cluster
-      - name: Deploy to EKS
-        working-directory: ${{ env.KUSTOMIZE_PATH }}
-        run: |
-          echo "🔄 Setting image: $IMAGE_URI"
-          kustomize edit set image b2b-rag-api=${IMAGE_URI}
+  # 📦 Install Kustomize
+  - name: Install Kustomize
+    run: |
+      curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+      sudo mv kustomize /usr/local/bin/
 
-          echo "📦 Rendering manifests..."
-          kustomize build .
+  # 🚀 Deploy to EKS
+  - name: Deploy
+    working-directory: ${{ env.KUSTOMIZE_PATH }}
+    run: |
+      echo "Updating image to: $IMAGE_URI"
+      kustomize edit set image b2b-rag-api=$IMAGE_URI
 
-          echo "🚀 Applying manifests..."
-          kustomize build . | kubectl apply --validate=false -f -
+      echo "Applying manifests..."
+      kustomize build . | kubectl apply --validate=false -f -
 
-          echo "⏳ Waiting for rollout..."
-          kubectl rollout status deployment/api --timeout=300s
+      echo "Waiting for rollout..."
+      kubectl rollout status deployment/api --timeout=300s
 
-          echo "✅ Deployment successful"
-
-      # 🧪 Debug if something fails
-      - name: Debug rollout failure
-        if: failure()
-        run: |
-          echo "❌ Deployment failed. Debugging..."
-
-          echo "📦 Pods:"
-          kubectl get pods -o wide
-
-          echo "📄 Describe pods:"
-          kubectl describe pods | tail -n 50
-
-          echo "📜 Logs:"
-          kubectl logs -l app=api --tail=100 || true
-        continue-on-error: true
+  # 🔍 Debug if deployment fails
+  - name: Debug
+    if: failure()
+    run: |
+      echo "Deployment failed. Debugging..."
+      kubectl get pods -o wide
+      kubectl describe pods | grep -A 20 Events || true
+      kubectl logs -l app=api --tail=50 || true
+```
