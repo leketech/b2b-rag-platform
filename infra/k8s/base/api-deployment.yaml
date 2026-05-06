@@ -10,6 +10,7 @@ metadata:
     app: api
     project: b2b-rag
 spec:
+  revisionHistoryLimit: 1  # ← CRITICAL: Clean up old replicas to free node memory
   replicas: 1  # Single replica to fit in 1 GiB
   strategy:
     type: Recreate  # Kill old before starting new (avoids memory contention)
@@ -57,11 +58,11 @@ spec:
           # ✅ Free Tier Resource Limits (critical for 1 GiB node)
           resources:
             requests:
-              cpu: "50m"      # 5% of 1 vCPU
-              memory: "128Mi" # 12.5% of 1 GiB
+              cpu: "25m"      # 2.5% of 1 vCPU
+              memory: "96Mi"  # Minimal request
             limits:
-              cpu: "300m"     # Allow burst for cold starts
-              memory: "384Mi" # Hard cap to prevent OOM eviction
+              cpu: "200m"     # Reduce burst limit
+              memory: "256Mi" # Aggressive cap to prevent OOM
           
           # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
@@ -75,19 +76,19 @@ spec:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 30  # Allow up to 5 minutes for cold start
+            timeoutSeconds: 10  # ← Increased timeout for slow startup
+            failureThreshold: 60  # Allow up to 10 minutes for cold start
           
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 15
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 10  # ← Increased timeout
+            failureThreshold: 5
           
           livenessProbe:
             httpGet:
