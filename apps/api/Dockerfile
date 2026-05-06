@@ -23,5 +23,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Start Uvicorn (app.main:app matches the 'app' directory inside apps/api)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Start Uvicorn with 1 worker (async handles concurrency efficiently)
+# On t3.micro (1GB RAM), 4 workers would cause OOMKilled
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
