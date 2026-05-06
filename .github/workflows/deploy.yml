@@ -92,7 +92,11 @@ jobs:
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
           
-          echo "🚀 Applying manifests..."
+          echo "� Cleaning up stuck pods..."
+          kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
+          sleep 5  # Wait for pods to be removed
+          
+          echo "�🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
           
           echo "⏳ Waiting for rollout (timeout: 300s)..."
@@ -183,7 +187,11 @@ jobs:
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
           
-          echo "🚀 Applying manifests..."
+          echo "� Cleaning up stuck pods..."
+          kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
+          sleep 5  # Wait for pods to be removed
+          
+          echo "�🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
           
           echo "⏳ Waiting for rollout (timeout: 300s)..."
