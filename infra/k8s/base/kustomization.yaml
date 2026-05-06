@@ -6,7 +6,9 @@ resources:
   - api-deployment.yaml
   - serviceaccount.yaml
 
+# ✅ Use new 'labels' syntax (replaces deprecated 'commonLabels')
 labels:
   - pairs:
       project: b2b-rag
       managed-by: kustomize
+    includeSelectors: false  # ← CRITICAL: Don't add to selector.matchLabels
