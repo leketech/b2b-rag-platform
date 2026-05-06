@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
 
+# ✅ CRITICAL: Grant OIDC token permission for AWS authentication
+permissions:
+  id-token: write  # Required for OIDC authentication with AWS
+  contents: read   # Required for checkout
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: b2b-rag-api
@@ -66,7 +71,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/b2b_rag_test
           REDIS_URL: redis://localhost:6379/0
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # ← REAL KEY FROM SECRETS
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: pytest -q --tb=short
 
@@ -85,13 +90,14 @@ jobs:
         id: vars
         run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      # 🔐 OIDC Auth via GitHub Actions identity
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
+          # ✅ Removed invalid: output-env-credentials: true
 
       - name: Login to Amazon ECR
         id: ecr-login

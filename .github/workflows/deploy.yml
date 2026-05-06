@@ -1,6 +1,11 @@
 # .github/workflows/deploy.yml
 name: Deploy to EKS
 
+# ✅ CRITICAL: Grant OIDC token permission for AWS authentication
+permissions:
+  id-token: write  # Required for OIDC authentication with AWS
+  contents: read   # Required for checkout
+
 on:
   workflow_run:
     workflows: ["CI/CD"]
@@ -37,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      # 🔐 OIDC Auth via GitHub Actions identity
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -126,17 +131,19 @@ jobs:
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
-    needs: deploy-staging  # Require staging success before prod (optional)
+    # Optional: Remove this line if you want prod to deploy independently of staging
+    # needs: deploy-staging
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      # 🔐 OIDC Auth via GitHub Actions identity
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging  # Update to prod role if different
+          # ✅ For production, consider using a separate role with stricter permissions
+          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
