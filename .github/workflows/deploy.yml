@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
 
       # 🔍 DEBUG: Show exact OIDC claims GitHub is sending (remove after fixing)
-      - name: Debug: OIDC Token Claims
+      - name: "Debug: OIDC Token Claims"
         run: |
           echo "🔍 Requesting OIDC token..."
           TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
@@ -161,7 +161,7 @@ jobs:
         uses: actions/checkout@v4
 
       # 🔍 DEBUG: Show exact OIDC claims GitHub is sending (remove after fixing)
-      - name: Debug: OIDC Token Claims
+      - name: "Debug: OIDC Token Claims"
         run: |
           echo "🔍 Requesting OIDC token..."
           TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
