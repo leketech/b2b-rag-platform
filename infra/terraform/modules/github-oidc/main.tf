@@ -9,8 +9,7 @@ data "aws_region" "current" {}
 
 # 2. Locals
 locals {
-  base_claim = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
-  sub_claim  = var.github_workflow != "" ? "${local.base_claim}:workflow_file:${var.github_workflow}" : local.base_claim
+  sub_claim = "repo:${var.github_repo}:*"
 }
 
 # 3. Resources

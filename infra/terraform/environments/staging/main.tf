@@ -69,5 +69,6 @@ module "s3" {
 }
 
 module "github_oidc" {
-  source = "../../modules/github-oidc"
+  source        = "../../modules/github-oidc"
+  github_branch = "*"
 }

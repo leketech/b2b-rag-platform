@@ -36,7 +36,9 @@ jobs:
        github.event.workflow_run.conclusion == 'success' && 
        github.event.workflow_run.head_branch == 'staging')
     runs-on: ubuntu-latest
-    environment: staging
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -130,7 +132,9 @@ jobs:
        github.event.workflow_run.conclusion == 'success' && 
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    environment: production
+    permissions:
+      id-token: write
+      contents: read
     # Optional: Remove this line if you want prod to deploy independently of staging
     # needs: deploy-staging
 
