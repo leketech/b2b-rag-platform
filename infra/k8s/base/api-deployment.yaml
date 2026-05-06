@@ -1,4 +1,7 @@
 # infra/k8s/base/api-deployment.yaml
+# =============================================================================
+# Free Tier Optimized: Single t3.micro node (1 GiB RAM total)
+# =============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,9 +10,9 @@ metadata:
     app: api
     project: b2b-rag
 spec:
-  replicas: 1
+  replicas: 1  # Single replica to fit in 1 GiB
   strategy:
-    type: Recreate  # ← Kill old pod before starting new (avoids resource contention on single node)
+    type: Recreate  # Kill old before starting new (avoids memory contention)
   selector:
     matchLabels:
       app: api
@@ -19,67 +22,83 @@ spec:
         app: api
         project: b2b-rag
       annotations:
+        # Optional: Remove Prometheus scraping to save ~30-50Mi RAM if not needed
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: b2b-rag-api
+      
+      # Security context (kept for defense-in-depth)
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+      
+      # ✅ Writable volumes for readOnlyRootFilesystem compatibility
       volumes:
         - name: tmp-volume
           emptyDir: {}
         - name: app-cache
           emptyDir: {}
+      
       containers:
         - name: api
           image: b2b-rag-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent  # Save bandwidth on Free Tier
+          
           ports:
             - containerPort: 8000
+          
           envFrom:
             - secretRef:
                 name: b2b-rag-secrets
-          # ✅ Free Tier Optimized Resources
+          
+          # ✅ Free Tier Resource Limits (critical for 1 GiB node)
           resources:
             requests:
-              cpu: "50m"
-              memory: "128Mi"
+              cpu: "50m"      # 5% of 1 vCPU
+              memory: "128Mi" # 12.5% of 1 GiB
             limits:
-              cpu: "300m"    # ← Slightly higher burst for cold start
-              memory: "384Mi" # ← Increased from 256Mi to prevent OOM on startup
+              cpu: "300m"     # Allow burst for cold starts
+              memory: "384Mi" # Hard cap to prevent OOM eviction
+          
+          # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
             - name: tmp-volume
               mountPath: /tmp
             - name: app-cache
-              mountPath: /app/.cache
-          # ✅ More Forgiving Probes for Low-Resource Cold Starts
-          startupProbe:  # ← NEW: Gives app extra time to start before readiness checks begin
+              mountPath: /app/.cache  # Adjust if your app writes elsewhere
+          
+          # ✅ Forgiving probes for slow cold starts on low CPU
+          startupProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 30  # ← Allow up to 5 minutes for cold start (30 × 10s)
+            failureThreshold: 30  # Allow up to 5 minutes for cold start
+          
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 15  # ← Wait 15s after startupProbe passes
-            periodSeconds: 10
+            initialDelaySeconds: 15
+            periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+          
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 60  # ← Wait 60s before checking liveness
+            initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          
+          # Security context (kept for defense-in-depth)
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -111,11 +130,11 @@ spec:
     kind: Deployment
     name: api
   minReplicas: 1
-  maxReplicas: 1  # ← Keep at 1 for Free Tier single-node setup
+  maxReplicas: 1  # Keep at 1 for single-node Free Tier setup
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 80
+          averageUtilization: 80  # Higher threshold to avoid premature scaling

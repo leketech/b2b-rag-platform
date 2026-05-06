@@ -1,5 +1,5 @@
 # .github/workflows/deploy.yml
-name: Deploy FastAPI to EKS (OIDC)
+name: Deploy FastAPI to EKS (Free Tier)
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔐 OIDC Auth - assumes role via GitHub OIDC
+      # 🔐 OIDC Auth
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -43,47 +43,30 @@ jobs:
         with:
           registry-type: private
 
-      # ✅ FIX: Set up Docker Buildx with docker-container driver (required for GHA cache)
-      - name: Set up Docker Buildx
-        id: buildx  # ← CRITICAL: Required for steps.buildx.outputs.name
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          install: true  # ← Required for type=gha cache
-          driver-opts: |
-            image=moby/buildkit:latest
-          buildkitd-flags: --debug
-
-      # ✅ Build & Push — explicitly reference the builder name
+      # ✅ Build & Push WITHOUT cache (simpler, avoids Buildx driver issues)
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
-          builder: ${{ steps.buildx.outputs.name }}  # ← CRITICAL: Use the builder created above
           context: ./apps/api
           file: ./apps/api/Dockerfile
           push: true
           tags: |
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}
             ${{ secrets.ECR_REGISTRY }}/b2b-rag-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false  # Optional: skip SBOM if not needed
+          # ✅ Removed cache-from/cache-to to avoid Buildx driver complexity
+          provenance: false
 
-      # ✅ Export IMAGE_URI for Kustomize step
       - name: Export Image URI
         run: |
           IMG="${{ secrets.ECR_REGISTRY }}/b2b-rag-api:${{ github.sha }}"
           echo "IMAGE_URI=$IMG" >> $GITHUB_ENV
-          echo "✅ Image URI: $IMG"
 
-      # ✅ Update Kubeconfig WITHOUT --role-arn (already running as the role via OIDC)
+      # ✅ Update Kubeconfig WITHOUT --role-arn (already authenticated via OIDC)
       - name: Update Kubeconfig
         run: |
-          echo "🔗 Updating kubeconfig for cluster: $CLUSTER_NAME"
           aws eks update-kubeconfig \
             --name $CLUSTER_NAME \
             --region $AWS_REGION
-          # ✅ No --role-arn needed — OIDC credentials are already in env
 
       - name: Install Kustomize
         run: |
@@ -104,17 +87,13 @@ jobs:
           
           echo "✅ Deploy complete!"
 
-      # 🔍 DEBUG: Capture diagnostics if rollout fails
+      # 🔍 Debug step if rollout fails
       - name: Debug: Rollout Diagnostics
         if: failure()
         working-directory: ${{ env.KUSTOMIZE_PATH }}
         run: |
-          echo "❌ Rollout failed — collecting diagnostics:"
-          echo "📋 Pod status:"
+          echo "❌ Rollout failed — diagnostics:"
           kubectl get pods -l app=api -n default -o wide || true
-          echo "📋 Pod events:"
           kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
-          echo "📋 Pod logs:"
           kubectl logs -l app=api -n default --tail=50 || true
-          kubectl logs -l app=api -n default --previous --tail=50 2>/dev/null || true
         continue-on-error: true
