@@ -1,16 +1,16 @@
 # .github/workflows/ci-cd.yml
 name: CI/CD
 
+# ✅ CRITICAL: Grant OIDC token permission for AWS authentication
+permissions:
+  id-token: write  # Required for OIDC authentication with AWS
+  contents: read   # Required for checkout action
+
 on:
   push:
     branches: [main, staging]
   pull_request:
     branches: [main]
-
-# ✅ CRITICAL: Grant OIDC token permission for AWS authentication
-permissions:
-  id-token: write  # Required for OIDC authentication with AWS
-  contents: read   # Required for checkout
 
 env:
   AWS_REGION: us-east-1
@@ -47,10 +47,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -71,7 +71,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/b2b_rag_test
           REDIS_URL: redis://localhost:6379/0
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # ← Real key from GitHub Secrets
           AWS_REGION: ${{ env.AWS_REGION }}
         run: pytest -q --tb=short
 
@@ -83,21 +83,21 @@ jobs:
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set short SHA
         id: vars
         run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # 🔐 OIDC Auth via GitHub Actions identity
+      # 🔐 OIDC Auth via GitHub Actions identity (FIXED)
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
-          # ✅ Removed invalid: output-env-credentials: true
+          # ✅ REMOVED: output-env-credentials: true (invalid parameter)
 
       - name: Login to Amazon ECR
         id: ecr-login
