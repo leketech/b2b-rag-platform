@@ -5,6 +5,12 @@ kind: Kustomization
 resources:
   - api-deployment.yaml
   - serviceaccount.yaml
+  - secret.yaml
+
+# ✅ Image configuration for deploy workflow
+images:
+  - name: b2b-rag-api
+    newName: b2b-rag-api  # Default; will be overridden in overlays
 
 # ✅ Use new 'labels' syntax (replaces deprecated 'commonLabels')
 labels:

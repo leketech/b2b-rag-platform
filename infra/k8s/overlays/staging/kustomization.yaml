@@ -5,6 +5,12 @@ kind: Kustomization
 resources:
   - ../../base
 
+# ✅ Image configuration for staging deployment
+images:
+  - name: b2b-rag-api
+    newName: 131292875644.dkr.ecr.us-east-1.amazonaws.com/b2b-rag-api
+    newTag: latest  # Will be overridden by deploy workflow
+
 labels:
   - pairs:
       environment: staging

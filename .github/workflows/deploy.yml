@@ -30,11 +30,7 @@ env:
 jobs:
   # ─── STAGING DEPLOY ─────────────────────────────
   deploy-staging:
-    if: >
-      github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging' ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' && 
-       github.event.workflow_run.head_branch == 'staging')
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'staging') }}
     runs-on: ubuntu-latest
     environment: staging
 
@@ -129,11 +125,7 @@ jobs:
 
   # ─── PRODUCTION DEPLOY ─────────────────────────────
   deploy-prod:
-    if: >
-      github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' && 
-       github.event.workflow_run.head_branch == 'main')
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     environment: production
     # Optional: Remove this line if you want prod to deploy independently of staging
