@@ -48,7 +48,8 @@ jobs:
         id: buildx  # ← CRITICAL: Required for steps.buildx.outputs.name
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container  # ← Required for type=gha cache
+          driver: docker-container
+          install: true  # ← Required for type=gha cache
           driver-opts: |
             image=moby/buildkit:latest
           buildkitd-flags: --debug
