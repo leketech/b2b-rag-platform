@@ -1,101 +1,114 @@
+# .github/workflows/ci-cd.yml
 name: CI/CD
 
 on:
-push:
-branches: [main, staging]
-pull_request:
-branches: [main]
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
 
 env:
-AWS_REGION: us-east-1
-ECR_REPOSITORY: b2b-rag-api
-PYTHON_VERSION: "3.11"
-NODE_VERSION: "20"
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: b2b-rag-api
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
 
 jobs:
+  # ─── API TESTS ─────────────────────────────
+  test-api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: b2b_rag_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-# ─── API TESTS ─────────────────────────────
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-test-api:
-runs-on: ubuntu-latest
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: apps/api/requirements.txt
 
-```
-services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    env:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: b2b_rag_test
-    ports:
-      - 5432:5432
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - 6379:6379
+      - name: Lint with Ruff
+        working-directory: apps/api
+        run: ruff check .
 
-steps:
-  - uses: actions/checkout@v4
+      - name: Run tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/b2b_rag_test
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -q --tb=short
 
-  - name: Setup Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: ${{ env.PYTHON_VERSION }}
+  # ─── BUILD & PUSH (Free Tier Optimized) ─────────────────────────
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: test-api
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
 
-  - name: Install deps
-    working-directory: apps/api
-    run: pip install -r requirements.txt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Lint
-    working-directory: apps/api
-    run: ruff check .
+      - name: Set short SHA
+        id: vars
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-  - name: Test
-    working-directory: apps/api
-    env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/b2b_rag_test
-      REDIS_URL: redis://localhost:6379/0
-    run: pytest -q
-```
+      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
 
-# ─── BUILD & PUSH ─────────────────────────
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
-build-and-push:
-runs-on: ubuntu-latest
-needs: test-api
-if: github.event_name == 'push'
+      # ✅ Build & Push WITHOUT cache (Free Tier reliability)
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.sha }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          # ✅ Removed cache-from/cache-to to avoid Buildx driver complexity on Free Tier
+          provenance: false
 
-```
-steps:
-  - uses: actions/checkout@v4
-
-  - name: Set SHA
-    id: vars
-    run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-  - name: Configure AWS creds
-    uses: aws-actions/configure-aws-credentials@v4
-    with:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      aws-region: ${{ env.AWS_REGION }}
-
-  - name: Login to ECR
-    id: ecr
-    uses: aws-actions/amazon-ecr-login@v2
-
-  - name: Build image
-    run: |
-      IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.sha }}
-
-      docker build -t $IMAGE ./apps/api
-      docker tag $IMAGE ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-
-      echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-
-  - name: Push image
-    run: |
-      docker push $IMAGE
-      docker push ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-```
+      - name: Output Image URI
+        run: |
+          echo "✅ Built and pushed:"
+          echo "   ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.sha }}"
+          echo "   ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"

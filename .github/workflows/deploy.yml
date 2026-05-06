@@ -1,77 +1,211 @@
+# .github/workflows/deploy.yml
 name: Deploy to EKS
 
 on:
-workflow_run:
-workflows: ["CI/CD"]
-types:
-- completed
+  workflow_run:
+    workflows: ["CI/CD"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
 
 env:
-AWS_REGION: us-east-1
-CLUSTER_NAME: b2b-rag-cluster
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: b2b-rag-cluster
+  ECR_REGISTRY: 131292875644.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
-deploy-staging:
-if: >
-github.event.workflow_run.conclusion == 'success' &&
-github.event.workflow_run.head_branch == 'staging'
-runs-on: ubuntu-latest
+  # ─── STAGING DEPLOY ─────────────────────────────
+  deploy-staging:
+    if: >
+      github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging' ||
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' && 
+       github.event.workflow_run.head_branch == 'staging')
+    runs-on: ubuntu-latest
+    environment: staging
 
-```
-steps:
-  - uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Configure AWS
-    uses: aws-actions/configure-aws-credentials@v4
-    with:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      aws-region: ${{ env.AWS_REGION }}
+      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
 
-  - name: Update kubeconfig
-    run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+      - name: Update kubeconfig
+        run: |
+          echo "🔗 Updating kubeconfig for cluster: $CLUSTER_NAME"
+          aws eks update-kubeconfig \
+            --name $CLUSTER_NAME \
+            --region $AWS_REGION \
+            --alias $CLUSTER_NAME
 
-  - name: Install Kustomize
-    run: |
-      curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
-      sudo mv kustomize /usr/local/bin/
+      - name: Install Kustomize
+        run: |
+          echo "🔧 Installing Kustomize..."
+          curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
 
-  - name: Deploy staging
-    run: |
-      cd infra/k8s/overlays/staging
-      kubectl apply -k .
-      kubectl rollout status deployment/api --timeout=300s
-```
+      - name: Get latest image tag from ECR
+        id: image
+        run: |
+          # Get the most recent image tag (excluding 'latest')
+          TAG=$(aws ecr list-images \
+            --repository-name b2b-rag-api \
+            --region $AWS_REGION \
+            --query 'imageIds[?imageTag!=`latest`].imageTag' \
+            --output text | sort -V | tail -1)
+          
+          if [ -z "$TAG" ]; then
+            echo "::error::No image tag found in ECR. Run CI/CD workflow first."
+            exit 1
+          fi
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "✅ Using image tag: $TAG"
 
-deploy-prod:
-if: >
-github.event.workflow_run.conclusion == 'success' &&
-github.event.workflow_run.head_branch == 'main'
-runs-on: ubuntu-latest
-environment: production
+      - name: Deploy to staging
+        working-directory: infra/k8s/overlays/staging
+        run: |
+          echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
+          kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
+          
+          echo "📋 Generated manifests (preview):"
+          kustomize build . | head -30
+          
+          echo "🚀 Applying manifests..."
+          kustomize build . | kubectl apply --validate=false -f -
+          
+          echo "⏳ Waiting for rollout (timeout: 300s)..."
+          kubectl rollout status deployment/api --timeout=300s
+          
+          echo "✅ Staging deploy complete!"
 
-```
-steps:
-  - uses: actions/checkout@v4
+      - name: Verify staging deployment
+        run: |
+          echo "🔍 Verifying staging deployment..."
+          kubectl get pods -l app=api -n default -o wide
+          kubectl get svc -l app=api -n default
+          
+          # Test health endpoint if pod is running
+          POD=$(kubectl get pods -l app=api -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            echo "🔍 Testing health endpoint on pod: $POD"
+            kubectl exec -n default "$POD" -- curl -s http://localhost:8000/api/v1/health || echo "⚠️ Health check failed"
+          fi
 
-  - name: Configure AWS
-    uses: aws-actions/configure-aws-credentials@v4
-    with:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      aws-region: ${{ env.AWS_REGION }}
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "❌ Deploy failed — diagnostics:"
+          kubectl get pods -l app=api -n default -o wide || true
+          kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
+          kubectl logs -l app=api -n default --tail=50 || true
+        continue-on-error: true
 
-  - name: Update kubeconfig
-    run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+  # ─── PRODUCTION DEPLOY ─────────────────────────────
+  deploy-prod:
+    if: >
+      github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' ||
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' && 
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-staging  # Require staging success before prod (optional)
 
-  - name: Install Kustomize
-    run: |
-      curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
-      sudo mv kustomize /usr/local/bin/
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Deploy prod
-    run: |
-      cd infra/k8s/overlays/prod
-      kubectl apply -k .
-      kubectl rollout status deployment/api --timeout=300s
-```
+      # 🔐 OIDC Auth (Free Tier: no long-lived AWS keys)
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::131292875644:role/github-actions-b2b-rag-staging  # Update to prod role if different
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Update kubeconfig
+        run: |
+          echo "🔗 Updating kubeconfig for cluster: $CLUSTER_NAME"
+          aws eks update-kubeconfig \
+            --name $CLUSTER_NAME \
+            --region $AWS_REGION \
+            --alias $CLUSTER_NAME
+
+      - name: Install Kustomize
+        run: |
+          echo "🔧 Installing Kustomize..."
+          curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Get latest image tag from ECR
+        id: image
+        run: |
+          TAG=$(aws ecr list-images \
+            --repository-name b2b-rag-api \
+            --region $AWS_REGION \
+            --query 'imageIds[?imageTag!=`latest`].imageTag' \
+            --output text | sort -V | tail -1)
+          
+          if [ -z "$TAG" ]; then
+            echo "::error::No image tag found in ECR. Run CI/CD workflow first."
+            exit 1
+          fi
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "✅ Using image tag: $TAG"
+
+      - name: Deploy to production
+        working-directory: infra/k8s/overlays/prod
+        run: |
+          echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
+          kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
+          
+          echo "📋 Generated manifests (preview):"
+          kustomize build . | head -30
+          
+          echo "🚀 Applying manifests..."
+          kustomize build . | kubectl apply --validate=false -f -
+          
+          echo "⏳ Waiting for rollout (timeout: 300s)..."
+          kubectl rollout status deployment/api --timeout=300s
+          
+          echo "✅ Production deploy complete!"
+
+      - name: Verify production deployment
+        run: |
+          echo "🔍 Verifying production deployment..."
+          kubectl get pods -l app=api -n default -o wide
+          kubectl get svc -l app=api -n default
+          
+          POD=$(kubectl get pods -l app=api -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            echo "🔍 Testing health endpoint on pod: $POD"
+            kubectl exec -n default "$POD" -- curl -s http://localhost:8000/api/v1/health || echo "⚠️ Health check failed"
+          fi
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "❌ Deploy failed — diagnostics:"
+          kubectl get pods -l app=api -n default -o wide || true
+          kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
+          kubectl logs -l app=api -n default --tail=50 || true
+        continue-on-error: true
