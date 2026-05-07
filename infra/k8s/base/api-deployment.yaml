@@ -73,7 +73,7 @@ spec:
               memory: "200Mi" # Conservative request for Free Tier t3.micro
             limits:
               cpu: "150m"     # Reduce burst limit
-              memory: "400Mi" # Conservative limit for Free Tier
+              memory: "600Mi" # Increased limit to prevent OOM during startup
           
           # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
