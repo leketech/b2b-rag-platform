@@ -24,8 +24,11 @@ class Base(DeclarativeBase):
 
 async def init_db() -> None:
     async with engine.begin() as conn:
-        # Enable pgvector extension
-        await conn.execute(__import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Enable pgvector extension (skip if not available, e.g., on Free Tier RDS)
+        try:
+            await conn.execute(__import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception:
+            pass  # Skip if extension not available
         await conn.run_sync(Base.metadata.create_all)
 
 

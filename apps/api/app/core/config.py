@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
 
     # Vector store
-    VECTOR_STORE: Literal["pgvector", "pinecone"] = "pgvector"
+    VECTOR_STORE: Literal["pgvector", "pinecone"] = "pinecone" if ENVIRONMENT == "production" else "pgvector"
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = ""
     PINECONE_INDEX_NAME: str = "b2b-rag"
