@@ -114,17 +114,26 @@ jobs:
 
           echo "✅ Staging deploy complete!"
 
-      - name: Verify staging deployment
+      - name: Verify deployment
         run: |
-          echo "🔍 Verifying staging deployment..."
+          echo "🔍 Verifying deployment..."
+
           kubectl get pods -l app=api -n default -o wide
           kubectl get svc -l app=api -n default
-          
-          # Test health endpoint if pod is running
+
           POD=$(kubectl get pods -l app=api -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+
           if [ -n "$POD" ]; then
             echo "🔍 Testing health endpoint on pod: $POD"
-            kubectl exec -n default "$POD" -- curl -s http://localhost:8000/api/v1/health || echo "⚠️ Health check failed"
+
+            kubectl exec -n default "$POD" -- python -c "
+import urllib.request
+print(
+    urllib.request.urlopen(
+        'http://localhost:8000/api/v1/health'
+    ).read().decode()
+)
+" || echo "⚠️ Health check failed"
           fi
 
       - name: Debug on failure
@@ -221,16 +230,26 @@ jobs:
 
           echo "✅ Production deploy complete!"
 
-      - name: Verify production deployment
+      - name: Verify deployment
         run: |
-          echo "🔍 Verifying production deployment..."
+          echo "🔍 Verifying deployment..."
+
           kubectl get pods -l app=api -n default -o wide
           kubectl get svc -l app=api -n default
-          
+
           POD=$(kubectl get pods -l app=api -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+
           if [ -n "$POD" ]; then
             echo "🔍 Testing health endpoint on pod: $POD"
-            kubectl exec -n default "$POD" -- curl -s http://localhost:8000/api/v1/health || echo "⚠️ Health check failed"
+
+            kubectl exec -n default "$POD" -- python -c "
+import urllib.request
+print(
+    urllib.request.urlopen(
+        'http://localhost:8000/api/v1/health'
+    ).read().decode()
+)
+" || echo "⚠️ Health check failed"
           fi
 
       - name: Debug on failure
