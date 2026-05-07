@@ -83,25 +83,35 @@ jobs:
 
       - name: Deploy to staging
         working-directory: infra/k8s/overlays/staging
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          set -euo pipefail
+
           echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
-          
-          # ✅ Proper kustomize edit syntax: <image>=<newimage>:<newtag>
           kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
-          
+
+          echo "🔐 Fetching RDS password from AWS Secrets Manager..."
+          DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id b2b-rag-db-password --query SecretString --output text --region $AWS_REGION)
+          DB_HOST="b2b-rag-db.cq52kugkmyq0.us-east-1.rds.amazonaws.com"
+          DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
+
+          echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
+          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="staging"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
+
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
-          
-          echo "� Cleaning up stuck pods..."
+
+          echo "🔴 Cleaning up stuck pods..."
           kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
           sleep 5  # Wait for pods to be removed
-          
-          echo "�🚀 Applying manifests..."
+
+          echo "🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
-          
+
           echo "⏳ Waiting for rollout (timeout: 300s)..."
           kubectl rollout status deployment/api --timeout=300s
-          
+
           echo "✅ Staging deploy complete!"
 
       - name: Verify staging deployment
@@ -180,23 +190,35 @@ jobs:
 
       - name: Deploy to production
         working-directory: infra/k8s/overlays/prod
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          set -euo pipefail
+
           echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
           kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
-          
+
+          echo "🔐 Fetching RDS password from AWS Secrets Manager..."
+          DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id b2b-rag-db-password --query SecretString --output text --region $AWS_REGION)
+          DB_HOST="b2b-rag-db.cq52kugkmyq0.us-east-1.rds.amazonaws.com"
+          DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
+
+          echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
+          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="production"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
+
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
-          
-          echo "� Cleaning up stuck pods..."
+
+          echo "🔴 Cleaning up stuck pods..."
           kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
           sleep 5  # Wait for pods to be removed
-          
-          echo "�🚀 Applying manifests..."
+
+          echo "🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
-          
+
           echo "⏳ Waiting for rollout (timeout: 300s)..."
           kubectl rollout status deployment/api --timeout=300s
-          
+
           echo "✅ Production deploy complete!"
 
       - name: Verify production deployment
