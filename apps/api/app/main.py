@@ -48,3 +48,8 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 app.include_router(health_router, prefix="/api/v1", tags=["health"])
 app.include_router(documents_router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(contracts_router, prefix="/api/v1/contracts", tags=["contracts"])
+
+
+@app.get("/healthz", include_in_schema=False)
+async def root_healthz() -> dict[str, str]:
+    return {"status": "ok"}

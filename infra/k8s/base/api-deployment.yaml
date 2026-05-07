@@ -69,11 +69,11 @@ spec:
           # ✅ Free Tier Resource Limits (critical for 1 GiB node)
           resources:
             requests:
-              cpu: "50m"      # Minimal CPU request
-              memory: "350Mi" # Match actual consumption observed (~430MB)
+              cpu: "75m"      # Minimal CPU request
+              memory: "500Mi" # Match actual consumption observed and avoid eviction
             limits:
-              cpu: "200m"     # Reduce burst limit
-              memory: "600Mi" # Allow up to 600Mi to prevent eviction
+              cpu: "250m"     # Reduce burst limit
+              memory: "700Mi" # Allow headroom for startup and dependencies
           
           # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
