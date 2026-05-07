@@ -9,14 +9,17 @@ from app.api.v1.endpoints.contracts import router as contracts_router
 from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.health import router as health_router
 from app.core.config import settings
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, logger
 from app.db.session import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    await init_db()
+    try:
+        await init_db()
+    except Exception as exc:
+        logger.warning("db.init.failed", error=str(exc))
     yield
 
 

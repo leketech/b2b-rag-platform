@@ -85,7 +85,7 @@ spec:
           # ✅ Forgiving probes for slow cold starts on low CPU
           startupProbe:
             httpGet:
-              path: /api/v1/health
+              path: /healthz
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -94,7 +94,7 @@ spec:
           
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /healthz
               port: 8000
             initialDelaySeconds: 60
             periodSeconds: 20
@@ -103,7 +103,7 @@ spec:
           
           livenessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /healthz
               port: 8000
             initialDelaySeconds: 60
             periodSeconds: 30
