@@ -23,12 +23,23 @@ spec:
         app: api
         project: b2b-rag
       annotations:
-        # Optional: Remove Prometheus scraping to save ~30-50Mi RAM if not needed
-        prometheus.io/scrape: "true"
+        # Disabled Prometheus scraping to save ~30-50Mi RAM on memory-constrained nodes
+        prometheus.io/scrape: "false"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: b2b-rag-api
+      
+      # Tolerations to allow scheduling on tainted nodes in constrained environments
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
       
       # Security context (kept for defense-in-depth)
       securityContext:
@@ -58,11 +69,11 @@ spec:
           # ✅ Free Tier Resource Limits (critical for 1 GiB node)
           resources:
             requests:
-              cpu: "25m"      # 2.5% of 1 vCPU
-              memory: "128Mi" # Slightly higher request for startup stability
+              cpu: "50m"      # Minimal CPU request
+              memory: "350Mi" # Match actual consumption observed (~430MB)
             limits:
               cpu: "200m"     # Reduce burst limit
-              memory: "512Mi" # Increased cap to prevent OOMKilled crashes
+              memory: "600Mi" # Allow up to 600Mi to prevent eviction
           
           # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
@@ -76,10 +87,10 @@ spec:
             httpGet:
               path: /api/v1/health
               port: 8000
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 10  # ← Increased timeout for slow startup
-            failureThreshold: 60  # Allow up to 10 minutes for cold start
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3  # Fast timeout to detect startup quickly
+            failureThreshold: 120  # Allow up to 10 minutes for cold start (5s * 120)
           
           readinessProbe:
             httpGet:
