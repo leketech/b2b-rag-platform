@@ -85,7 +85,6 @@ jobs:
         working-directory: infra/k8s/overlays/staging
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -98,7 +97,7 @@ jobs:
           DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
 
           echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
-          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="staging"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=PINECONE_API_KEY="$PINECONE_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="staging"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
 
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
@@ -193,7 +192,6 @@ jobs:
         working-directory: infra/k8s/overlays/prod
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -206,7 +204,7 @@ jobs:
           DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
 
           echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
-          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="production"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=PINECONE_API_KEY="$PINECONE_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="production"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
 
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30

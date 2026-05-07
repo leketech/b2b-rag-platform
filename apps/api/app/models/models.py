@@ -77,10 +77,7 @@ class DocumentChunk(Base):
     source_filename: Mapped[str] = mapped_column(String(500), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, default=0)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(1536) if settings.VECTOR_STORE == "pgvector" else JSON,
-        nullable=True
-    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))  # text-embedding-3-small dims
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default={})
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
