@@ -59,10 +59,10 @@ spec:
           resources:
             requests:
               cpu: "25m"      # 2.5% of 1 vCPU
-              memory: "96Mi"  # Minimal request
+              memory: "128Mi" # Slightly higher request for startup stability
             limits:
               cpu: "200m"     # Reduce burst limit
-              memory: "256Mi" # Aggressive cap to prevent OOM
+              memory: "512Mi" # Increased cap to prevent OOMKilled crashes
           
           # ✅ Writable mounts for app that needs disk writes
           volumeMounts:
