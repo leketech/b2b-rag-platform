@@ -5,8 +5,12 @@ kind: Kustomization
 resources:
   - ../../base
 
-patchesStrategicMerge:
-  - secret-patch.yaml
+patches:
+  - path: secret-patch.yaml
+    target:
+      kind: Secret
+      name: b2b-rag-secrets
+      version: v1
 
 # ✅ Image configuration for prod deployment
 images:

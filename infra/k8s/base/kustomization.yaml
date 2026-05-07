@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - api-deployment.yaml
   - serviceaccount.yaml
+  - secret.yaml
 
 # Secret values are injected at deploy time from AWS Secrets Manager
 # via GitHub Actions, not managed directly in Kustomize.
