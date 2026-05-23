@@ -9,7 +9,6 @@ celery_app = Celery(
     include=[
         "app.services.notifications.tasks",
         "app.services.scheduling.tasks",
-        "app.services.documents.tasks",
     ],
 )
 
@@ -30,7 +29,7 @@ celery_app.conf.update(
         },
         # Send meeting reminders every 15 minutes
         "send-meeting-reminders": {
-            "task": "app.services.notifications.tasks.send_meeting_reminders",
+            "task": "app.services.scheduling.tasks.send_meeting_reminders",
             "schedule": 900.0,
         },
         # Contract expiry checks daily at 9am UTC

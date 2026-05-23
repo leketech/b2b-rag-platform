@@ -27,11 +27,11 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_azs" {
-  default = ["us-east-1a"]  # Single AZ to minimize costs
+  default = ["us-east-1a", "us-east-1b"]  # Two AZs required for private subnet groups and better availability
 }
 
 variable "private_subnet_azs" {
-  default = ["us-east-1a"]  # Single AZ
+  default = ["us-east-1a", "us-east-1b"]  # Two AZs required by RDS subnet groups
 }
 
 # EKS Nodes: t3.micro (Free Tier eligible)

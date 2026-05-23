@@ -51,3 +51,18 @@ output "private_subnet_ids" {
   description = "Private subnet IDs for workloads (EKS, RDS)"
   value       = module.networking.private_subnet_ids
 }
+
+output "app_irsa_role_arn" {
+  description = "IRSA IAM role ARN for the b2b-rag-api Kubernetes service account"
+  value       = module.secrets_manager.irsa_role_arn
+}
+
+output "app_secret_name" {
+  description = "AWS Secrets Manager secret name for app secrets"
+  value       = module.secrets_manager.secret_name
+}
+
+output "app_secret_arn" {
+  description = "ARN of the app secrets in AWS Secrets Manager"
+  value       = module.secrets_manager.secret_arn
+}

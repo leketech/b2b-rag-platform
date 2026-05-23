@@ -31,3 +31,9 @@ variable "private_subnet_azs" {
   type        = list(string)
   default     = ["us-east-1c", "us-east-1d"]
 }
+
+variable "create_nat_gateway" {
+  description = "Create a NAT Gateway for private subnet internet access"
+  type        = bool
+  default     = true
+}

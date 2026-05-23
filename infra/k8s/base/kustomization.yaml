@@ -3,14 +3,15 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
+  - configmap.yaml
   - api-deployment.yaml
+  - celery-worker-deployment.yaml
+  - celery-beat-deployment.yaml
   - serviceaccount.yaml
-  - secret.yaml
 
-# Secret values are injected at deploy time from AWS Secrets Manager
-# via GitHub Actions, not managed directly in Kustomize.
-# This keeps the DB password out of Git history and avoids placeholder
-# overwrite issues during deployment.
+# Sensitive secrets are never stored in K8s Secrets or Git.
+# The app pod fetches them directly from AWS Secrets Manager at startup
+# using the IRSA role annotated on the b2b-rag-api ServiceAccount.
 
 # ✅ Image configuration for deploy workflow
 images:

@@ -9,15 +9,16 @@ locals {
 # 1. Security Group for RDS
 resource "aws_security_group" "rds" {
   name        = "${local.aws_name}-sg"
-  description = "Allow PostgreSQL access from EKS"
+  description = "Allow PostgreSQL access from authorized sources"
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [var.eks_cluster_security_group_id]
-    description     = "PostgreSQL from EKS"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    security_groups = var.source_security_group_id != "" ? [var.source_security_group_id] : null
+    cidr_blocks     = length(var.source_cidr_blocks) > 0 ? var.source_cidr_blocks : null
+    description     = "PostgreSQL ingress"
   }
 
   egress {

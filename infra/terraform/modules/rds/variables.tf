@@ -51,14 +51,21 @@ variable "db_subnet_ids" {
   }
 }
 
-variable "eks_cluster_security_group_id" {
-  description = "Security group ID of the EKS cluster to allow ingress"
+variable "source_security_group_id" {
+  description = "Security group ID allowed to access RDS. Leave empty if using cidr_blocks."
   type        = string
+  default     = ""
 
   validation {
-    condition     = can(regex("^sg-[0-9a-f]{8,17}$", var.eks_cluster_security_group_id))
-    error_message = "eks_cluster_security_group_id must be a valid AWS security group ID format (e.g., sg-0123456789abcdef0)."
+    condition = var.source_security_group_id == "" || can(regex("^sg-[0-9a-f]{8,17}$", var.source_security_group_id))
+    error_message = "source_security_group_id must be empty or a valid AWS security group ID format (e.g., sg-0123456789abcdef0)."
   }
+}
+
+variable "source_cidr_blocks" {
+  description = "CIDR blocks allowed to access RDS. Use only when no source_security_group_id is provided."
+  type        = list(string)
+  default     = []
 }
 
 variable "environment" {

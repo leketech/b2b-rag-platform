@@ -1,7 +1,16 @@
 # infra/terraform/modules/eks/main.tf
 # =============================================================================
-# EKS Module: Cluster, Node Group, and GitHub Actions OIDC Access
+# EKS Module: Cluster, Node Group, GitHub Actions OIDC Access, and IRSA
 # =============================================================================
+
+terraform {
+  required_providers {
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+  }
+}
 
 # =============================================================================
 # IAM Role for EKS Cluster
@@ -136,4 +145,22 @@ resource "aws_eks_access_policy_association" "github_actions_admin" {
   }
 
   depends_on = [aws_eks_access_entry.github_actions]
+}
+
+# =============================================================================
+# OIDC Provider for IRSA (IAM Roles for Service Accounts)
+# =============================================================================
+data "tls_certificate" "eks_oidc" {
+  url = aws_eks_cluster.this.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+  url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }

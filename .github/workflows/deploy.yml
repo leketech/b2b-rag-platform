@@ -81,30 +81,34 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "✅ Using image tag: $TAG"
 
+      - name: Patch ServiceAccount with IRSA role ARN
+        run: |
+          set -euo pipefail
+
+          # Resolve the app IRSA role ARN from Terraform outputs.
+          # This is the role the pod uses to call secretsmanager:GetSecretValue.
+          IRSA_ROLE_ARN=$(aws iam get-role \
+            --role-name b2b-rag-staging-app-irsa \
+            --query 'Role.Arn' --output text)
+
+          echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
+          kubectl annotate serviceaccount b2b-rag-api \
+            eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
+            --overwrite
+
       - name: Deploy to staging
         working-directory: infra/k8s/overlays/staging
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
 
           echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
           kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
 
-          echo "🔐 Fetching RDS password from AWS Secrets Manager..."
-          DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id b2b-rag-db-password --query SecretString --output text --region $AWS_REGION)
-          DB_HOST="b2b-rag-db.cq52kugkmyq0.us-east-1.rds.amazonaws.com"
-          DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
-
-          echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
-          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="staging"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
-
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
 
           echo "🔴 Cleaning up stuck pods..."
           kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
-          sleep 5  # Wait for pods to be removed
 
           echo "🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -
@@ -197,30 +201,32 @@ print(
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "✅ Using image tag: $TAG"
 
+      - name: Patch ServiceAccount with IRSA role ARN
+        run: |
+          set -euo pipefail
+
+          IRSA_ROLE_ARN=$(aws iam get-role \
+            --role-name b2b-rag-production-app-irsa \
+            --query 'Role.Arn' --output text)
+
+          echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
+          kubectl annotate serviceaccount b2b-rag-api \
+            eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
+            --overwrite
+
       - name: Deploy to production
         working-directory: infra/k8s/overlays/prod
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
 
           echo "🔄 Setting image to: $ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}"
           kustomize edit set image b2b-rag-api=$ECR_REGISTRY/b2b-rag-api:${{ steps.image.outputs.tag }}
 
-          echo "🔐 Fetching RDS password from AWS Secrets Manager..."
-          DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id b2b-rag-db-password --query SecretString --output text --region $AWS_REGION)
-          DB_HOST="b2b-rag-db.cq52kugkmyq0.us-east-1.rds.amazonaws.com"
-          DATABASE_URL="postgresql+asyncpg://postgres:$DB_PASSWORD@$DB_HOST:5432/b2b_rag_db"
-
-          echo "🔐 Creating/updating Kubernetes secret b2b-rag-secrets..."
-          kubectl create secret generic b2b-rag-secrets             --from-literal=DATABASE_URL="$DATABASE_URL"             --from-literal=REDIS_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_BROKER_URL="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=CELERY_RESULT_BACKEND="redis://:<REDIS_PASSWORD>@<ELASTICACHE_ENDPOINT>:6379/0"             --from-literal=ENVIRONMENT="production"             --from-literal=LOG_LEVEL="INFO"             --from-literal=EMBEDDING_MODEL="text-embedding-3-small"             --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"             --from-literal=CHUNK_SIZE="512"             --from-literal=CHUNK_OVERLAP="50"             --from-literal=SLACK_BOT_TOKEN="xoxb-..."             --from-literal=SLACK_CHANNEL_ID="C0123456789"             --dry-run=client -o yaml | kubectl apply -f -
-
           echo "📋 Generated manifests (preview):"
           kustomize build . | head -30
 
           echo "🔴 Cleaning up stuck pods..."
           kubectl delete pods -l app=api --force --grace-period=0 2>/dev/null || true
-          sleep 5  # Wait for pods to be removed
 
           echo "🚀 Applying manifests..."
           kustomize build . | kubectl apply --validate=false -f -

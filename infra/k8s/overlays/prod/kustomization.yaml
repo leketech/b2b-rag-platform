@@ -5,12 +5,16 @@ kind: Kustomization
 resources:
   - ../../base
 
+# ConfigMap patch: override ENVIRONMENT and APP_SECRET_NAME for production
 patches:
-  - path: secret-patch.yaml
-    target:
-      kind: Secret
-      name: b2b-rag-secrets
-      version: v1
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: b2b-rag-config
+      data:
+        ENVIRONMENT: "production"
+        APP_SECRET_NAME: "b2b-rag/production/app-secrets"
 
 # ✅ Image configuration for prod deployment
 images:

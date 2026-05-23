@@ -18,8 +18,8 @@ spec:
           imagePullPolicy: Always
           command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
           envFrom:
-            - secretRef:
-                name: b2b-rag-secrets
+            - configMapRef:
+                name: b2b-rag-config
           resources:
             requests: { cpu: "100m", memory: "256Mi" }
             limits: { cpu: "250m", memory: "512Mi" }

@@ -1,10 +1,19 @@
+import os
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# In staging/production the pod injects these two non-sensitive vars via ConfigMap.
+# The rest of the settings are pulled from AWS Secrets Manager at startup.
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+_IS_DEV = _ENVIRONMENT == "development"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env" if _IS_DEV else None,
+        extra="ignore",
+    )
 
     # App
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
@@ -47,6 +56,11 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+
     # Notifications
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = "noreply@example.com"
@@ -54,15 +68,40 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
     SLACK_BOT_TOKEN: str = ""
+    SLACK_DEPLOY_CHANNEL: str = ""
 
     # Payments
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
     # Scheduling
+    SCHEDULING_PROVIDER: Literal["calcom", "google"] = "calcom"
     CALCOM_API_KEY: str = ""
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
+    GOOGLE_CALENDAR_ID: str = ""
+    DEFAULT_TIMEZONE: str = "UTC"
     GOOGLE_CALENDAR_CLIENT_ID: str = ""
     GOOGLE_CALENDAR_CLIENT_SECRET: str = ""
 
 
-settings = Settings()
+def _build_settings() -> Settings:
+    if _IS_DEV:
+        return Settings()
+
+    # In staging/production: pull the JSON secret and pass fields as init kwargs.
+    # Init kwargs have the highest pydantic-settings priority, so they override
+    # any residual env vars for the same keys — keeping sensitive values out of
+    # the container environment entirely.
+    secret_name = os.environ["APP_SECRET_NAME"]
+    region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+    from app.core.secrets import load_secret
+    aws_values = load_secret(secret_name, region)
+
+    # Non-sensitive values that come from the K8s ConfigMap are already present
+    # as real env vars; pydantic-settings will pick them up for any field not
+    # covered by aws_values.
+    return Settings(**aws_values)
+
+
+settings = _build_settings()

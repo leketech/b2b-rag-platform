@@ -1,0 +1,24 @@
+# infra/k8s/base/configmap.yaml
+# Non-sensitive configuration injected into every app pod.
+# Sensitive secrets are fetched directly from AWS Secrets Manager by the app
+# at startup using the IRSA role bound to the b2b-rag-api service account.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: b2b-rag-config
+  labels:
+    app: api
+    project: b2b-rag
+data:
+  ENVIRONMENT: "staging"
+  LOG_LEVEL: "INFO"
+  AWS_DEFAULT_REGION: "us-east-1"
+  # The app reads this to know which Secrets Manager secret to fetch at startup.
+  # Override this value in environment overlays (e.g., prod uses b2b-rag/production/app-secrets).
+  APP_SECRET_NAME: "b2b-rag/staging/app-secrets"
+  LLM_PROVIDER: "openai"
+  LLM_MODEL: "gpt-4o"
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  VECTOR_STORE: "pgvector"
+  SCHEDULING_PROVIDER: "calcom"
+  DEFAULT_TIMEZONE: "UTC"

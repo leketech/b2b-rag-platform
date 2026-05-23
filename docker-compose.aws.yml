@@ -1,0 +1,102 @@
+x-app-build: &app-build
+  context: ./apps/api
+  dockerfile: Dockerfile
+
+# Non-sensitive env vars read from the .env file written by user_data.sh.tpl.
+# Sensitive secrets (DATABASE_URL, API keys, etc.) are fetched at startup from
+# AWS Secrets Manager using the EC2 instance's IAM role — nothing sensitive is
+# stored in the .env file or in this compose file.
+x-app-env: &app-env
+  env_file: .env
+
+services:
+  # ─── Redis (sidecar, free — runs on the same EC2 instance) ──────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: b2b_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI ─────────────────────────────────────────────────────────────────
+  api:
+    build: *app-build
+    image: b2b-rag-api:latest
+    container_name: b2b_api
+    restart: unless-stopped
+    <<: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+  # ─── Celery Worker ───────────────────────────────────────────────────────────
+  celery_worker:
+    build: *app-build
+    image: b2b-rag-api:latest
+    container_name: b2b_celery
+    restart: unless-stopped
+    <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+
+  # ─── Celery Beat ─────────────────────────────────────────────────────────────
+  celery_beat:
+    build: *app-build
+    image: b2b-rag-api:latest
+    container_name: b2b_celery_beat
+    restart: unless-stopped
+    <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: celery -A app.core.celery_app beat --loglevel=info
+
+  # ─── Flower (Celery monitoring) ───────────────────────────────────────────────
+  flower:
+    build: *app-build
+    image: b2b-rag-api:latest
+    container_name: b2b_flower
+    restart: unless-stopped
+    <<: *app-env
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: celery -A app.core.celery_app flower --port=5555
+
+  # ─── Next.js Frontend ────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: b2b_web
+    restart: unless-stopped
+    <<: *app-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+    command: node server.js
+
+volumes:
+  redis_data:

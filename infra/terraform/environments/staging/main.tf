@@ -3,9 +3,12 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"  # ← Changed from ~> 5.0 to match existing state
+      version = "~> 6.0"
     }
-    # Remove kubernetes/helm if not used elsewhere
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   backend "s3" {
@@ -71,4 +74,16 @@ module "s3" {
 module "github_oidc" {
   source        = "../../modules/github-oidc"
   github_branch = "*"
+}
+
+module "secrets_manager" {
+  source = "../../modules/secrets-manager"
+
+  project_name        = var.project_name
+  environment         = var.environment
+  oidc_provider_arn   = module.eks.oidc_provider_arn
+  oidc_provider_url   = module.eks.oidc_provider_url
+  db_secret_arn       = module.rds.db_secret_arn
+  k8s_namespace       = "default"
+  k8s_service_account = "b2b-rag-api"
 }

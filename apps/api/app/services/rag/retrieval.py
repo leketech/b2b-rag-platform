@@ -50,23 +50,24 @@ class RAGService:
         """Semantic search over document_chunks using pgvector cosine similarity."""
         query_embedding = await self.embed_query(query)
 
-        filters = []
-        if doc_type:
-            filters.append(f"doc_type = '{doc_type}'")
-        if organization_id:
-            filters.append(f"(organization_id = '{organization_id}' OR organization_id IS NULL)")
-
-        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-
-        sql = text(f"""
+        sql = text("""
             SELECT id, content, doc_type, source_filename, metadata
             FROM document_chunks
-            {where_clause}
+            WHERE (:doc_type IS NULL OR doc_type = :doc_type)
+              AND (:organization_id IS NULL OR organization_id = :organization_id OR organization_id IS NULL)
             ORDER BY embedding <=> CAST(:embedding AS vector)
             LIMIT :top_k
         """)
 
-        result = await db.execute(sql, {"embedding": str(query_embedding), "top_k": top_k})
+        result = await db.execute(
+            sql,
+            {
+                "doc_type": doc_type,
+                "organization_id": organization_id,
+                "embedding": str(query_embedding),
+                "top_k": top_k,
+            },
+        )
         rows = result.fetchall()
 
         logger.info("rag.retrieval", query=query[:80], doc_type=doc_type, chunks_found=len(rows))

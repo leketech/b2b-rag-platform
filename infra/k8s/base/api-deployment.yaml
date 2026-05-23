@@ -63,8 +63,8 @@ spec:
             - containerPort: 8000
           
           envFrom:
-            - secretRef:
-                name: b2b-rag-secrets
+            - configMapRef:
+                name: b2b-rag-config
           
           # ✅ Free Tier Resource Limits (critical for 1 GiB node)
           resources:

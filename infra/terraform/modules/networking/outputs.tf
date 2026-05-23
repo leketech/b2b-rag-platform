@@ -25,5 +25,5 @@ output "private_route_table_id" {
 
 output "nat_gateway_id" {
   description = "ID of the NAT Gateway"
-  value       = aws_nat_gateway.this.id
+  value       = try(aws_nat_gateway.this[0].id, "")
 }

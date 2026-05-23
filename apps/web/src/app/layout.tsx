@@ -1,3 +1,11 @@
+import './globals.css';
+import { AppProviders } from "@/components/auth/AppProviders";
+
+export const metadata = {
+  title: "B2B RAG Platform",
+  description: "Business operations workspace powered by retrieval augmented generation.",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -5,7 +13,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }
