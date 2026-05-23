@@ -35,7 +35,7 @@ async def _send_meeting_reminders() -> None:
         stmt = (
             select(Meeting)
             .where(Meeting.status != MeetingStatus.CANCELLED)
-            .where(Meeting.reminder_sent == False)
+            .where(Meeting.reminder_sent.is_(False))
             .where(Meeting.scheduled_at >= window_start)
             .where(Meeting.scheduled_at <= window_end)
         )

@@ -1,5 +1,6 @@
 """Scheduling provider wrappers for Cal.com and Google Calendar."""
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,7 @@ class SchedulingProviderError(RuntimeError):
 
 
 class SchedulingProvider:
-    async def find_availability(self, organizer_email: str, duration_minutes: int, from_date: datetime, to_date: datetime, timezone: str) -> list[dict]:
+    async def find_availability(self, organizer_email: str, duration_minutes: int, from_date: datetime, to_date: datetime, tz: str) -> list[dict]:
         raise NotImplementedError
 
     async def create_event(
@@ -25,7 +26,7 @@ class SchedulingProvider:
         duration_minutes: int,
         attendees: list[dict],
         location: str,
-        timezone: str,
+        tz: str,
     ) -> dict:
         raise NotImplementedError
 
@@ -50,7 +51,7 @@ class CalComProvider(SchedulingProvider):
         duration_minutes: int,
         from_date: datetime,
         to_date: datetime,
-        timezone: str,
+        tz: str,
     ) -> list[dict]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -59,7 +60,7 @@ class CalComProvider(SchedulingProvider):
                     "duration": duration_minutes,
                     "from": from_date.isoformat(),
                     "to": to_date.isoformat(),
-                    "timezone": timezone,
+                    "timezone": tz,
                     "email": organizer_email,
                 },
                 headers=self.headers,
@@ -77,14 +78,14 @@ class CalComProvider(SchedulingProvider):
         duration_minutes: int,
         attendees: list[dict],
         location: str,
-        timezone: str,
+        tz: str,
     ) -> dict:
         payload = {
             "title": title,
             "description": description,
             "start_time": start_datetime.isoformat(),
             "duration_minutes": duration_minutes,
-            "timezone": timezone,
+            "timezone": tz,
             "attendees": attendees,
             "location": location,
         }
@@ -131,14 +132,14 @@ class GoogleCalendarProvider(SchedulingProvider):
         duration_minutes: int,
         from_date: datetime,
         to_date: datetime,
-        timezone: str,
+        tz: str,
     ) -> list[dict]:
         utc_start = from_date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         utc_end = to_date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         body = {
             "timeMin": utc_start,
             "timeMax": utc_end,
-            "timeZone": timezone,
+            "timeZone": tz,
             "items": [{"id": self.calendar_id}],
         }
 
@@ -178,15 +179,15 @@ class GoogleCalendarProvider(SchedulingProvider):
         duration_minutes: int,
         attendees: list[dict],
         location: str,
-        timezone: str,
+        tz: str,
     ) -> dict:
         end_datetime = start_datetime + timedelta(minutes=duration_minutes)
         body = {
             "summary": title,
             "location": location,
             "description": description,
-            "start": {"dateTime": start_datetime.isoformat(), "timeZone": timezone},
-            "end": {"dateTime": end_datetime.isoformat(), "timeZone": timezone},
+            "start": {"dateTime": start_datetime.isoformat(), "timeZone": tz},
+            "end": {"dateTime": end_datetime.isoformat(), "timeZone": tz},
             "attendees": [{"email": a["email"], "displayName": a.get("name")} for a in attendees],
             "conferenceData": {"createRequest": {"requestId": str(uuid.uuid4())}},
         }

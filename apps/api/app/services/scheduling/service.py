@@ -1,17 +1,15 @@
 """Meeting scheduling service logic."""
 
-import asyncio
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
 
 import dateparser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.models import Meeting, MeetingStatus, Organization
-from app.services.scheduling.providers import SchedulingProviderError, get_scheduling_provider
+from app.models.models import Meeting, MeetingStatus
+from app.services.scheduling.providers import get_scheduling_provider
 
 
 async def parse_natural_language_datetime(natural_language: str, preferred_tz: str) -> datetime:

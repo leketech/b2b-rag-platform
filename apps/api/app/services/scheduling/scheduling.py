@@ -10,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_db
 from app.services.scheduling.service import (
-    create_meeting,
-    get_availability,
     cancel_meeting,
+    create_meeting,
     list_meetings,
     parse_natural_language_datetime,
 )

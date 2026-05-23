@@ -100,7 +100,7 @@ async def _check_overdue_invoices():
         stmt = (
             select(Invoice)
             .where(Invoice.status == InvoiceStatus.SENT)
-            .where(Invoice.due_date != None)
+            .where(Invoice.due_date.is_not(None))
             .where(Invoice.due_date < now)
         )
         results = await session.execute(stmt)
@@ -121,7 +121,7 @@ async def _check_contract_expiry():
     async with AsyncSessionLocal() as session:
         stmt = (
             select(Contract)
-            .where(Contract.expires_at != None)
+            .where(Contract.expires_at.is_not(None))
             .where(Contract.expires_at <= deadline)
             .where(Contract.status.notin_([ContractStatus.EXPIRED, ContractStatus.CANCELLED]))
         )
