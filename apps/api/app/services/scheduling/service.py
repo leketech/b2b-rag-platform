@@ -1,7 +1,7 @@
 """Meeting scheduling service logic."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import dateparser
 from sqlalchemy import select
@@ -14,7 +14,7 @@ from app.services.scheduling.providers import get_scheduling_provider
 
 async def parse_natural_language_datetime(natural_language: str, preferred_tz: str) -> datetime:
     if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+        from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 
         client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         prompt = (
@@ -45,14 +45,14 @@ async def parse_natural_language_datetime(natural_language: str, preferred_tz: s
         )
         if not parsed:
             raise ValueError("Could not parse natural language datetime")
-        return parsed.astimezone(timezone.utc)
+        return parsed.astimezone(UTC)
 
     try:
         payload = json.loads(text)
         dt = datetime.fromisoformat(payload["datetime_iso"])
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
     except Exception as exc:
         raise ValueError("Failed to parse scheduling assistant output") from exc
 

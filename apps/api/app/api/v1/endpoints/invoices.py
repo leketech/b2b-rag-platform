@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from datetime import datetime
 
@@ -81,10 +82,8 @@ async def create_invoice(
 
     due = None
     if req.due_date:
-        try:
+        with contextlib.suppress(ValueError):
             due = datetime.fromisoformat(req.due_date)
-        except ValueError:
-            pass
 
     invoice = Invoice(
         organization_id=uuid.UUID(current_org["org_id"]),
@@ -114,7 +113,7 @@ async def get_invoice(
     try:
         iid = uuid.UUID(invoice_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.") from None
 
     result = await db.execute(
         select(Invoice).where(
@@ -138,7 +137,7 @@ async def update_invoice_status(
     try:
         iid = uuid.UUID(invoice_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.") from None
 
     result = await db.execute(
         select(Invoice).where(

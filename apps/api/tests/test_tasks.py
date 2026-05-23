@@ -7,13 +7,11 @@ directly on the task instance via patch.object(task, 'retry', ...).
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.services.notifications.tasks import (
     send_email_notification,
     send_slack_notification,
     send_sms_notification,
 )
-
 
 # ── send_email_notification ──────────────────────────────────────────────────
 
@@ -52,13 +50,13 @@ class TestSendEmailNotification:
                 "retry",
                 side_effect=RuntimeError("task retrying"),
             ) as mock_retry,
+            pytest.raises(RuntimeError, match="task retrying"),
         ):
-            with pytest.raises(RuntimeError, match="task retrying"):
-                send_email_notification.run(
-                    recipient="user@example.com",
-                    subject="Test",
-                    body="Body",
-                )
+            send_email_notification.run(
+                recipient="user@example.com",
+                subject="Test",
+                body="Body",
+            )
 
         mock_retry.assert_called_once()
 
@@ -116,9 +114,9 @@ class TestSendSmsNotification:
                 "retry",
                 side_effect=RuntimeError("task retrying"),
             ) as mock_retry,
+            pytest.raises(RuntimeError, match="task retrying"),
         ):
-            with pytest.raises(RuntimeError, match="task retrying"):
-                send_sms_notification.run(to_number="+15551234567", body="Reminder")
+            send_sms_notification.run(to_number="+15551234567", body="Reminder")
 
         mock_retry.assert_called_once()
 
@@ -173,9 +171,9 @@ class TestSendSlackNotification:
                 "retry",
                 side_effect=RuntimeError("task retrying"),
             ) as mock_retry,
+            pytest.raises(RuntimeError, match="task retrying"),
         ):
-            with pytest.raises(RuntimeError, match="task retrying"):
-                send_slack_notification.run(channel="#alerts", message="Test")
+            send_slack_notification.run(channel="#alerts", message="Test")
 
         mock_retry.assert_called_once()
 

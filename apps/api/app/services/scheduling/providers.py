@@ -3,10 +3,11 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+
 from app.core.config import settings
 
 
@@ -134,8 +135,8 @@ class GoogleCalendarProvider(SchedulingProvider):
         to_date: datetime,
         tz: str,
     ) -> list[dict]:
-        utc_start = from_date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        utc_end = to_date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        utc_start = from_date.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        utc_end = to_date.astimezone(UTC).isoformat().replace("+00:00", "Z")
         body = {
             "timeMin": utc_start,
             "timeMax": utc_end,
@@ -214,4 +215,4 @@ def get_scheduling_provider() -> SchedulingProvider:
         return GoogleCalendarProvider()
     if provider_name == "calcom":
         return CalComProvider()
-    raise SchedulingProviderError("Unsupported scheduling provider: %s" % settings.SCHEDULING_PROVIDER)
+    raise SchedulingProviderError(f"Unsupported scheduling provider: {settings.SCHEDULING_PROVIDER}")

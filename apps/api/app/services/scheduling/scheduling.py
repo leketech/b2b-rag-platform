@@ -1,6 +1,6 @@
 """Meeting scheduling endpoints for Phase 3."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -48,8 +48,8 @@ async def schedule_meeting(req: ScheduleRequest, db: AsyncSession = Depends(get_
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="preferred_datetime must be ISO8601") from exc
         if scheduled_at.tzinfo is None:
-            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
-        scheduled_at = scheduled_at.astimezone(timezone.utc)
+            scheduled_at = scheduled_at.replace(tzinfo=UTC)
+        scheduled_at = scheduled_at.astimezone(UTC)
     else:
         scheduled_at = await parse_natural_language_datetime(
             req.natural_language,
@@ -93,20 +93,20 @@ async def get_availability(
         start = (
             datetime.fromisoformat(from_date.replace("Z", "+00:00"))
             if from_date
-            else datetime.utcnow().replace(tzinfo=timezone.utc)
+            else datetime.utcnow().replace(tzinfo=UTC)
         )
         end = (
             datetime.fromisoformat(to_date.replace("Z", "+00:00"))
             if to_date
-            else (datetime.utcnow() + timedelta(days=7)).replace(tzinfo=timezone.utc)
+            else (datetime.utcnow() + timedelta(days=7)).replace(tzinfo=UTC)
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="from_date and to_date must be ISO8601") from exc
 
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
 
     availability = await get_availability(
         organizer_email=organizer_email,

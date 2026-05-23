@@ -13,9 +13,9 @@ from app.api.v1.endpoints.invoices import router as invoices_router
 from app.api.v1.endpoints.meetings import router as meetings_router
 from app.api.v1.endpoints.reminders import router as reminders_router
 from app.core.config import settings
-from app.services.scheduling.scheduling import router as scheduling_router
 from app.core.logging import configure_logging, logger
 from app.db.session import init_db
+from app.services.scheduling.scheduling import router as scheduling_router
 
 
 @asynccontextmanager

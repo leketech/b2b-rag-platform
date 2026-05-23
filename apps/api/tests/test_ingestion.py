@@ -2,14 +2,12 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from app.services.documents.ingestion import (
     IngestionService,
     _chunk_text,
     _detect_doc_type,
     _load_text,
 )
-
 
 # ── _detect_doc_type ────────────────────────────────────────────────────────
 

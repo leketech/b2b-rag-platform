@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from datetime import datetime
 
@@ -62,14 +63,12 @@ async def create_reminder(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid remind_at format. Use ISO 8601.",
-        )
+        ) from None
 
     related_id = None
     if req.related_id:
-        try:
+        with contextlib.suppress(ValueError):
             related_id = uuid.UUID(req.related_id)
-        except ValueError:
-            pass
 
     reminder = NotificationLog(
         organization_id=uuid.UUID(current_org["org_id"]),
@@ -96,7 +95,7 @@ async def delete_reminder(
     try:
         rid = uuid.UUID(reminder_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reminder not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reminder not found.") from None
 
     result = await db.execute(
         select(NotificationLog).where(

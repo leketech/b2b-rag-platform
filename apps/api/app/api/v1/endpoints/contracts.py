@@ -95,7 +95,7 @@ async def get_contract(
     try:
         cid = uuid.UUID(contract_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found.") from None
 
     result = await db.execute(
         select(Contract).where(
@@ -119,7 +119,7 @@ async def update_contract_status(
     try:
         cid = uuid.UUID(contract_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found.") from None
 
     result = await db.execute(
         select(Contract).where(

@@ -66,7 +66,7 @@ async def create_meeting(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid scheduled_at format. Use ISO 8601 (e.g. 2025-06-01T14:00:00).",
-        )
+        ) from None
 
     meeting = Meeting(
         organization_id=uuid.UUID(current_org["org_id"]),
@@ -92,7 +92,7 @@ async def get_meeting(
     try:
         mid = uuid.UUID(meeting_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found.") from None
 
     result = await db.execute(
         select(Meeting).where(
@@ -116,7 +116,7 @@ async def update_meeting_status(
     try:
         mid = uuid.UUID(meeting_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found.") from None
 
     result = await db.execute(
         select(Meeting).where(

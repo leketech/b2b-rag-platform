@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta
+
 import structlog
 from celery import shared_task
 from sqlalchemy import select
