@@ -123,8 +123,13 @@ jobs:
         run: |
           echo "❌ Deploy failed — diagnostics:"
           kubectl get pods -l app=api -n default -o wide || true
-          kubectl describe pod -l app=api -n default 2>/dev/null | grep -A 20 "Events:" || true
-          kubectl logs -l app=api -n default --tail=50 || true
+          POD=$(kubectl get pods -l app=api -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            echo "--- current logs ---"
+            kubectl logs "$POD" -n default --tail=100 2>/dev/null || true
+            echo "--- previous container logs ---"
+            kubectl logs "$POD" -n default --previous --tail=100 2>/dev/null || echo "no previous logs"
+          fi
         continue-on-error: true
 
   # ─── PRODUCTION DEPLOY ─────────────────────────────
