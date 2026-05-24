@@ -85,13 +85,7 @@ jobs:
       - name: Patch ServiceAccount with IRSA role ARN
         run: |
           set -euo pipefail
-
-          # Resolve the app IRSA role ARN from Terraform outputs.
-          # This is the role the pod uses to call secretsmanager:GetSecretValue.
-          IRSA_ROLE_ARN=$(aws iam get-role \
-            --role-name b2b-rag-staging-app-irsa \
-            --query 'Role.Arn' --output text)
-
+          IRSA_ROLE_ARN="arn:aws:iam::131292875644:role/b2b-rag-staging-app-irsa"
           echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
           kubectl annotate serviceaccount b2b-rag-api \
             eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
@@ -197,11 +191,7 @@ jobs:
       - name: Patch ServiceAccount with IRSA role ARN
         run: |
           set -euo pipefail
-
-          IRSA_ROLE_ARN=$(aws iam get-role \
-            --role-name b2b-rag-production-app-irsa \
-            --query 'Role.Arn' --output text)
-
+          IRSA_ROLE_ARN="arn:aws:iam::131292875644:role/b2b-rag-production-app-irsa"
           echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
           kubectl annotate serviceaccount b2b-rag-api \
             eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
