@@ -5,6 +5,15 @@ kind: Kustomization
 resources:
   - ../../base
 
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: b2b-rag-api
+        annotations:
+          eks.amazonaws.com/role-arn: "arn:aws:iam::131292875644:role/b2b-rag-staging-app-irsa"
+
 # ✅ Image configuration for staging deployment
 images:
   - name: b2b-rag-api

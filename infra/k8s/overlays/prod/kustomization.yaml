@@ -15,6 +15,13 @@ patches:
       data:
         ENVIRONMENT: "production"
         APP_SECRET_NAME: "b2b-rag/production/app-secrets"
+  - patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: b2b-rag-api
+        annotations:
+          eks.amazonaws.com/role-arn: "arn:aws:iam::131292875644:role/b2b-rag-production-app-irsa"
 
 # ✅ Image configuration for prod deployment
 images:

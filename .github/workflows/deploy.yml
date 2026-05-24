@@ -82,15 +82,6 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "✅ Using image tag: $TAG"
 
-      - name: Patch ServiceAccount with IRSA role ARN
-        run: |
-          set -euo pipefail
-          IRSA_ROLE_ARN="arn:aws:iam::131292875644:role/b2b-rag-staging-app-irsa"
-          echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
-          kubectl annotate serviceaccount b2b-rag-api \
-            eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
-            --overwrite
-
       - name: Deploy to staging
         working-directory: infra/k8s/overlays/staging
         run: |
@@ -187,15 +178,6 @@ jobs:
           
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "✅ Using image tag: $TAG"
-
-      - name: Patch ServiceAccount with IRSA role ARN
-        run: |
-          set -euo pipefail
-          IRSA_ROLE_ARN="arn:aws:iam::131292875644:role/b2b-rag-production-app-irsa"
-          echo "🔐 Patching ServiceAccount with IRSA role: $IRSA_ROLE_ARN"
-          kubectl annotate serviceaccount b2b-rag-api \
-            eks.amazonaws.com/role-arn="$IRSA_ROLE_ARN" \
-            --overwrite
 
       - name: Deploy to production
         working-directory: infra/k8s/overlays/prod
