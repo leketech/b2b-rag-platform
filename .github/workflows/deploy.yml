@@ -130,15 +130,7 @@ jobs:
 
           if [ -n "$POD" ]; then
             echo "🔍 Testing health endpoint on pod: $POD"
-
-            kubectl exec -n default "$POD" -- python -c "
-import urllib.request
-print(
-    urllib.request.urlopen(
-        'http://localhost:8000/api/v1/health'
-    ).read().decode()
-)
-" || echo "⚠️ Health check failed"
+            kubectl exec -n default "$POD" -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/health').read().decode())" || echo "⚠️ Health check failed"
           fi
 
       - name: Debug on failure
@@ -248,15 +240,7 @@ print(
 
           if [ -n "$POD" ]; then
             echo "🔍 Testing health endpoint on pod: $POD"
-
-            kubectl exec -n default "$POD" -- python -c "
-import urllib.request
-print(
-    urllib.request.urlopen(
-        'http://localhost:8000/api/v1/health'
-    ).read().decode()
-)
-" || echo "⚠️ Health check failed"
+            kubectl exec -n default "$POD" -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/health').read().decode())" || echo "⚠️ Health check failed"
           fi
 
       - name: Debug on failure
